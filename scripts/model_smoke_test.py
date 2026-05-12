@@ -20,7 +20,7 @@ def main() -> int:
     os.environ["ANTHROPIC_API_KEY"] = env.get("ANTHROPIC_API_KEY", "")
     os.environ["GOOGLE_API_KEY"] = env.get("GOOGLE_API_KEY", "")
 
-    SYSTEM = "Eres Liliana, ejecutiva de NutriWhite. Responde en español, breve y cálido."
+    SYSTEM = "Eres Gutty, ejecutiva de NutriWhite. Responde en español, breve y cálido."
     USER = "Hola buenos días"
 
     # Anthropic

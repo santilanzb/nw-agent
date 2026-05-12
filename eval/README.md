@@ -6,7 +6,7 @@ Side-by-side evaluation of LLMs against NutriWhite-specific prompts derived from
 
 Validate the model choice (default: Claude Haiku 4.5) against alternatives (Gemini 3 Flash, GPT-5 Mini) on the criteria that matter for this use case:
 
-1. **Spanish naturalness** — does it sound like Liliana, not a translator?
+1. **Spanish naturalness** — does it sound like Gutty, not a translator?
 2. **Persona match** — warm, empathetic, uses correct emojis/style?
 3. **Handoff trigger** — does it correctly escalate when policy says it must?
 4. **Hallucination** — does it invent prices, names, availability?
