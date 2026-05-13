@@ -42,10 +42,14 @@ services:
     env_file:
       - .env
     environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://agent:agent@postgres:5432/company_agent}
       PORT: ${CRM_ADAPTER_PORT:-8082}
     command: uvicorn company_agent.crm_adapter.main:app --host 0.0.0.0 --port ${CRM_ADAPTER_PORT:-8082}
     ports:
       - "${CRM_ADAPTER_PORT:-8082}:${CRM_ADAPTER_PORT:-8082}"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   ingest-worker:
     build:

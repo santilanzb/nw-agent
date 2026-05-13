@@ -10,6 +10,16 @@ class CrmSettings(BaseSettings):
     app_name: str = "crm-adapter"
     internal_api_key: str = Field(alias="INTERNAL_API_KEY")
 
+    # Postgres connection (used for handoff_state — Zoho stays the system of record for Notes)
+    database_url: str = Field(
+        default="postgresql://agent:agent@postgres:5432/company_agent",
+        alias="DATABASE_URL",
+    )
+
+    # Handoff state lifecycle
+    handoff_expire_hours: int = Field(default=24, alias="HANDOFF_EXPIRE_HOURS")
+    handoff_team_group_name: str = Field(default="Gutty Agent", alias="HANDOFF_TEAM_GROUP_NAME")
+
     # Provider: "mock" | "zoho"
     crm_provider: str = Field(default="mock", alias="CRM_PROVIDER")
 

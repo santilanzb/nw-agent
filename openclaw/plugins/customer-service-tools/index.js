@@ -274,16 +274,41 @@ export default definePluginEntry({
       },
     );
 
-    // ── Handoff ───────────────────────────────────────────────────────────────
+    // ── Handoff state check (called by Gutty on EVERY patient turn) ──────────
+    api.registerTool(
+      {
+        name: "check_handoff_state",
+        description:
+          "OBLIGATORIA en cada turno antes de responder al paciente. Devuelve si la conversación está en handoff humano activo. " +
+          "Si la respuesta tiene active=true, NO RESPONDAS al paciente — la asesora está atendiendo. " +
+          "El parámetro contact_phone debe ser el número de WhatsApp del remitente en formato E.164 (+584145610594).",
+        parameters: Type.Object({
+          contact_phone: Type.String({ description: "E.164, ej. +584145610594" }),
+        }),
+        async execute(_id, params) {
+          const result = await postJson(crmAdapterUrl, internalApiKey, "/v1/handoff/state/check", {
+            contact_phone: params.contact_phone,
+          });
+          return asText(result);
+        },
+      },
+    );
+
+    // ── Handoff: escalate to logistics team ──────────────────────────────────
     api.registerTool(
       {
         name: "handoff_human",
         description:
-          "Escalar la conversación a una asesora humana. Crea una nota en el contacto de Zoho con el motivo y prioridad.",
+          "Escalar la conversación a una asesora humana. Crea una nota en el contacto de Zoho y abre un estado de handoff (pending) " +
+          "que silencia al agente para este paciente hasta que un miembro del equipo lo tome. " +
+          "SIEMPRE incluye contact_phone (E.164 del remitente) y, si lo conoces, patient_name y last_message para que el equipo tenga contexto.",
         parameters: Type.Object({
           conversation_id: Type.String(),
           reason: Type.String({ minLength: 10 }),
-          customer_id: Type.Optional(Type.String()),
+          customer_id: Type.Optional(Type.String({ description: "Zoho Contact id si se conoce" })),
+          contact_phone: Type.Optional(Type.String({ description: "E.164 del paciente, ej. +584145610594" })),
+          patient_name: Type.Optional(Type.String()),
+          last_message: Type.Optional(Type.String({ description: "Último mensaje del paciente" })),
           priority: Type.Optional(
             Type.Union([
               Type.Literal("low"),
@@ -297,6 +322,48 @@ export default definePluginEntry({
           const result = await postJson(crmAdapterUrl, internalApiKey, "/v1/handoff", {
             ...params,
             priority: params.priority ?? "high",
+          });
+          return asText(result);
+        },
+      },
+    );
+
+    // ── Team commands: claim / resume (used in the "Gutty Agent" group) ──────
+    // Triggered when a logistics member mentions Gutty in the team group:
+    //   "@Gutty tomo +584145610594"     → team_claim_handoff
+    //   "@Gutty resume +584145610594"   → team_resume_handoff
+    api.registerTool(
+      {
+        name: "team_claim_handoff",
+        description:
+          "Tomar un caso de handoff. Marca el handoff como 'claimed' por el miembro del equipo. " +
+          "Solo invocar cuando el mensaje viene del grupo del equipo de logística ('Gutty Agent'). " +
+          "Si otro miembro ya tomó el caso (success=false, reason='already_claimed'), responde en el grupo: " +
+          "'Ese caso ya lo tomó {claimed_by_name}.'",
+        parameters: Type.Object({
+          contact_phone: Type.String({ description: "E.164 del paciente cuyo caso se toma" }),
+          claimer_phone: Type.String({ description: "E.164 del miembro del equipo que toma" }),
+          claimer_name: Type.String({ description: "Nombre del miembro del equipo, ej. 'María'" }),
+        }),
+        async execute(_id, params) {
+          const result = await postJson(crmAdapterUrl, internalApiKey, "/v1/handoff/claim", params);
+          return asText(result);
+        },
+      },
+    );
+
+    api.registerTool(
+      {
+        name: "team_resume_handoff",
+        description:
+          "Cerrar un handoff. El paciente vuelve a poder hablar con Gutty. " +
+          "Solo invocar desde el grupo de logística cuando un miembro del equipo lo indique explícitamente.",
+        parameters: Type.Object({
+          contact_phone: Type.String({ description: "E.164 del paciente cuyo caso se cierra" }),
+        }),
+        async execute(_id, params) {
+          const result = await postJson(crmAdapterUrl, internalApiKey, "/v1/handoff/resume", {
+            contact_phone: params.contact_phone,
           });
           return asText(result);
         },

@@ -15,7 +15,10 @@
       "customer_consultas",
       "customer_examenes",
       "ticket_create_draft",
-      "handoff_human"
+      "check_handoff_state",
+      "handoff_human",
+      "team_claim_handoff",
+      "team_resume_handoff"
     ]
   },
   "uiHints": {

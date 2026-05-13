@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException
 import uvicorn
 
 from company_agent.common.auth import require_internal_api_key
+from company_agent.common.handoff_state import HandoffStateStore, HandoffStateRecord
 from company_agent.common.logging import configure_logging
 
 from .adapters import BaseCrmAdapter, MockCrmAdapter, ZohoCrmAdapter
@@ -18,8 +19,14 @@ from .models import (
     CustomerTicketsRequest,
     DealRecord,
     ExamenRecord,
+    HandoffClaimRequest,
+    HandoffClaimResponse,
     HandoffRequest,
     HandoffResponse,
+    HandoffResumeRequest,
+    HandoffResumeResponse,
+    HandoffStateCheckRequest,
+    HandoffStateRecordModel,
     HealthResponse,
     TicketDraftRequest,
     TicketDraftResponse,
@@ -117,10 +124,134 @@ def create_ticket_draft(request: TicketDraftRequest, _auth: InternalApiKey) -> T
 
 # ── Handoff ───────────────────────────────────────────────────────────────────
 
+handoff_store = HandoffStateStore(
+    database_url=settings.database_url,
+    expire_hours=settings.handoff_expire_hours,
+)
+
+
+def _record_to_model(rec: HandoffStateRecord | None) -> HandoffStateRecordModel:
+    """Convert a DB record into the agent-facing model. None ⇒ active=False."""
+    if not rec:
+        return HandoffStateRecordModel(active=False, contact_phone="")
+    return HandoffStateRecordModel(
+        active=rec.status in ("pending", "claimed"),
+        handoff_id=rec.id,
+        contact_phone=rec.contact_phone,
+        contact_id=rec.contact_id,
+        patient_name=rec.patient_name,
+        status=rec.status,
+        reason=rec.reason,
+        priority=rec.priority,
+        last_message=rec.last_message,
+        claimed_by_phone=rec.claimed_by_phone,
+        claimed_by_name=rec.claimed_by_name,
+        created_at=rec.created_at.isoformat() if rec.created_at else None,
+        claimed_at=rec.claimed_at.isoformat() if rec.claimed_at else None,
+        expires_at=rec.expires_at.isoformat() if rec.expires_at else None,
+    )
+
+
 @app.post("/v1/handoff", response_model=HandoffResponse)
 def handoff_human(request: HandoffRequest, _auth: InternalApiKey) -> HandoffResponse:
-    logger.info("handoff conversation=%s contact=%s", request.conversation_id, request.customer_id)
-    return adapter.handoff(request)
+    """
+    Fire a new handoff. Creates a Zoho Note (audit) AND a row in handoff_state
+    (the runtime gate that keeps Gutty quiet while a human is on the case).
+    """
+    logger.info(
+        "handoff conversation=%s contact=%s phone=%s",
+        request.conversation_id, request.customer_id, request.contact_phone,
+    )
+
+    # 1) Zoho Note via the existing adapter path (system of record / audit)
+    zoho_response = adapter.handoff(request)
+
+    # 2) Postgres state row — but only if we have a phone to gate on.
+    # Without a phone the agent can't self-check on subsequent turns, so we
+    # still return success but skip the state row (it's a no-op handoff).
+    if not request.contact_phone:
+        logger.warning("handoff has no contact_phone; skipping state row (handoff_id=%s)", zoho_response.handoff_id)
+        return HandoffResponse(
+            handoff_id=zoho_response.handoff_id,
+            contact_id=zoho_response.contact_id,
+            note_id=zoho_response.note_id,
+            status=zoho_response.status,
+            message=zoho_response.message,
+            expires_at=None,
+        )
+
+    state = handoff_store.create(
+        contact_phone=request.contact_phone,
+        reason=request.reason,
+        priority=request.priority,
+        contact_id=request.customer_id,
+        patient_name=request.patient_name,
+        conversation_id=request.conversation_id,
+        last_message=request.last_message,
+        zoho_note_id=zoho_response.note_id,
+    )
+
+    return HandoffResponse(
+        handoff_id=state.id,
+        contact_id=state.contact_id,
+        note_id=state.zoho_note_id,
+        status=state.status,
+        message=zoho_response.message,
+        expires_at=state.expires_at.isoformat(),
+    )
+
+
+@app.post("/v1/handoff/state/check", response_model=HandoffStateRecordModel)
+def handoff_state_check(request: HandoffStateCheckRequest, _auth: InternalApiKey) -> HandoffStateRecordModel:
+    """Hot path: every patient message hits this so the agent knows to stay silent."""
+    rec = handoff_store.check_active(request.contact_phone)
+    return _record_to_model(rec)
+
+
+@app.post("/v1/handoff/claim", response_model=HandoffClaimResponse)
+def handoff_claim(request: HandoffClaimRequest, _auth: InternalApiKey) -> HandoffClaimResponse:
+    """First-to-claim. Returns success=False if someone already claimed it."""
+    logger.info(
+        "handoff claim contact=%s by=%s (%s)",
+        request.contact_phone, request.claimer_name, request.claimer_phone,
+    )
+
+    claimed = handoff_store.claim(
+        contact_phone=request.contact_phone,
+        claimer_phone=request.claimer_phone,
+        claimer_name=request.claimer_name,
+    )
+    if claimed:
+        return HandoffClaimResponse(
+            success=True, reason="claimed", state=_record_to_model(claimed),
+        )
+
+    # Race lost (or nothing pending). Distinguish the two so the caller can
+    # reply with a precise message.
+    already = handoff_store.already_claimed(request.contact_phone)
+    if already:
+        return HandoffClaimResponse(
+            success=False, reason="already_claimed", state=_record_to_model(already),
+        )
+    return HandoffClaimResponse(
+        success=False, reason="not_found",
+        state=HandoffStateRecordModel(active=False, contact_phone=request.contact_phone),
+    )
+
+
+@app.post("/v1/handoff/resume", response_model=HandoffResumeResponse)
+def handoff_resume(request: HandoffResumeRequest, _auth: InternalApiKey) -> HandoffResumeResponse:
+    """Close the active handoff for this patient so Gutty answers again."""
+    logger.info("handoff resume contact=%s", request.contact_phone)
+    resumed = handoff_store.resume(request.contact_phone)
+    if resumed:
+        return HandoffResumeResponse(
+            success=True, reason="resumed", state=_record_to_model(resumed),
+        )
+    return HandoffResumeResponse(
+        success=False, reason="not_found",
+        state=HandoffStateRecordModel(active=False, contact_phone=request.contact_phone),
+    )
 
 
 def run() -> None:

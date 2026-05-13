@@ -118,12 +118,64 @@ class HandoffRequest(BaseModel):
     conversation_id: str
     reason: str = Field(min_length=10, max_length=2000)
     priority: Priority = "high"
-    customer_id: str | None = None  # Zoho Contact record id
+    customer_id: str | None = None      # Zoho Contact record id
+
+    # Richer context so the team notification + state row are useful
+    contact_phone: str | None = None    # E.164, e.g. +584145610594
+    patient_name: str | None = None
+    last_message: str | None = None     # the patient's last message at handoff time
 
 
 class HandoffResponse(BaseModel):
-    handoff_id: str
-    contact_id: str | None
-    note_id: str | None             # Zoho Note id if created
-    status: str
-    message: str
+    handoff_id: str                     # handoff_state.id (uuid)
+    contact_id: str | None              # Zoho Contact id (if known)
+    note_id: str | None                 # Zoho Note id if created
+    status: str                         # pending | claimed | resumed | expired
+    message: str                        # patient-facing line
+    expires_at: str | None = None       # ISO timestamp
+
+
+# ── Handoff state inspection / control ────────────────────────────────────────
+
+class HandoffStateCheckRequest(BaseModel):
+    contact_phone: str                  # E.164
+
+
+class HandoffStateRecordModel(BaseModel):
+    """What the agent / team tools see when inspecting state."""
+    active: bool
+    handoff_id: str | None = None
+    contact_phone: str
+    contact_id: str | None = None
+    patient_name: str | None = None
+    status: str | None = None           # pending | claimed | None
+    reason: str | None = None
+    priority: str | None = None
+    last_message: str | None = None
+    claimed_by_phone: str | None = None
+    claimed_by_name: str | None = None
+    created_at: str | None = None
+    claimed_at: str | None = None
+    expires_at: str | None = None
+
+
+class HandoffClaimRequest(BaseModel):
+    contact_phone: str                  # patient's E.164
+    claimer_phone: str                  # logistics member's E.164
+    claimer_name: str = Field(min_length=1, max_length=80)
+
+
+class HandoffClaimResponse(BaseModel):
+    success: bool                       # True if this caller won the race
+    reason: str                         # "claimed" | "already_claimed" | "not_found"
+    state: HandoffStateRecordModel
+
+
+class HandoffResumeRequest(BaseModel):
+    contact_phone: str
+
+
+class HandoffResumeResponse(BaseModel):
+    success: bool
+    reason: str                         # "resumed" | "not_found"
+    state: HandoffStateRecordModel
