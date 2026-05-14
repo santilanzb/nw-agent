@@ -205,7 +205,7 @@ def handoff_human(request: HandoffRequest, _auth: InternalApiKey) -> HandoffResp
 def handoff_state_check(request: HandoffStateCheckRequest, _auth: InternalApiKey) -> HandoffStateRecordModel:
     """Hot path: every patient message hits this so the agent knows to stay silent."""
     rec = handoff_store.check_active(request.contact_phone)
-    return _record_to_model(rec)
+    return _record_to_model(rec) if rec else HandoffStateRecordModel(active=False, contact_phone=request.contact_phone)
 
 
 @app.post("/v1/handoff/claim", response_model=HandoffClaimResponse)

@@ -251,6 +251,14 @@ intents:
       - "cuál especialista atiende niños"
       - "necesito que me recomiendes un especialista"
       - "qué doctor me puede ver"
+      - "necesito que me recomiendes un especialista tengo gastritis crónica"
+      - "tengo colitis quién me puede atender"
+      - "necesito un especialista para mi tiroides"
+      - "qué especialista para diabetes"
+      - "tengo SIBO necesito un especialista"
+      - "recomiéndame un médico para hipotiroidismo"
+      - "qué doctor para intestino irritable"
+      - "necesito que me recomienden alguien tengo reflujo crónico"
 
   handoff_scheduling:
     description: "Patient asks to book an appointment or asks about availability"
