@@ -1,9 +1,12 @@
 """
-Side-by-side model evaluation for the NutriWhite agent.
+NutriWhite agent evaluation harness.
 
-Loads cases from seeds.yaml, runs each against each selected model, and writes
-JSONL outputs for manual review. No automatic scoring yet — Phase 1 is just
-producing comparable outputs.
+Two modes:
+  generation (default): side-by-side model eval for Spanish response quality.
+    Loads cases from seeds.yaml, calls each model, writes JSONL results.
+  intent: classifier correctness eval. Loads cases from intent_eval.yaml,
+    hits POST /v1/classify_intent for each, checks expected_intent.
+    Requires a running rag-api (RAG_API_URL + INTERNAL_API_KEY in env).
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ import json
 import os
 import sys
 import time
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -68,6 +72,17 @@ class EvalCase:
 
 
 @dataclass(slots=True)
+class IntentCase:
+    id: str
+    category: str
+    expected_intent: str
+    expected_tool: str | None
+    sender_phone: str
+    input: str
+    expected: list[dict[str, Any]]
+
+
+@dataclass(slots=True)
 class ModelOutput:
     model: str
     case_id: str
@@ -79,6 +94,11 @@ class ModelOutput:
 def load_cases() -> list[EvalCase]:
     raw = yaml.safe_load((EVAL_DIR / "seeds.yaml").read_text(encoding="utf-8"))
     return [EvalCase(**case) for case in raw["cases"]]
+
+
+def load_intent_cases() -> list[IntentCase]:
+    raw = yaml.safe_load((EVAL_DIR / "intent_eval.yaml").read_text(encoding="utf-8"))
+    return [IntentCase(**case) for case in raw["cases"]]
 
 
 def load_system_prompt() -> str:
@@ -221,6 +241,98 @@ def run(models: list[str]) -> Path:
     return run_dir
 
 
+# === Intent correctness pass ==================================================
+
+
+def _call_classify_intent(base_url: str, api_key: str, message: str) -> dict:
+    payload = json.dumps({"message": message, "language_hint": "es", "top_k": 5}).encode()
+    req = urllib.request.Request(
+        f"{base_url}/v1/classify_intent",
+        data=payload,
+        headers={
+            "content-type": "application/json",
+            "x-internal-api-key": api_key,
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
+def run_intent_eval() -> Path:
+    rag_api_url = os.environ.get("RAG_API_URL", "http://127.0.0.1:8081")
+    api_key = os.environ.get("INTERNAL_API_KEY", "")
+    if not api_key:
+        print("ERROR: INTERNAL_API_KEY not set", file=sys.stderr)
+        sys.exit(1)
+
+    cases = load_intent_cases()
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_dir = RESULTS_DIR / timestamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = run_dir / "intent_eval.jsonl"
+    correct = 0
+    total = 0
+
+    # Tally per-intent-class accuracy for reporting
+    class_totals: dict[str, int] = {}
+    class_correct: dict[str, int] = {}
+
+    print(f"intent eval → {out_path.name}  ({len(cases)} cases)")
+    with out_path.open("w", encoding="utf-8") as fh:
+        for case in cases:
+            start = time.monotonic()
+            error = None
+            result: dict = {}
+            try:
+                result = _call_classify_intent(rag_api_url, api_key, case.input)
+            except Exception as exc:  # noqa: BLE001
+                error = f"{type(exc).__name__}: {exc}"
+
+            latency_ms = int((time.monotonic() - start) * 1000)
+            got_intent = result.get("intent", "") if not error else ""
+            passed = (not error) and got_intent == case.expected_intent
+
+            class_totals[case.expected_intent] = class_totals.get(case.expected_intent, 0) + 1
+            class_correct[case.expected_intent] = class_correct.get(case.expected_intent, 0) + (1 if passed else 0)
+            correct += int(passed)
+            total += 1
+
+            marker = "✓" if passed else "✗"
+            print(
+                f"  {marker} {case.id:45s} "
+                f"want={case.expected_intent:35s} "
+                f"got={got_intent or error!r:35s} "
+                f"{latency_ms}ms"
+            )
+            line = {
+                "case_id": case.id,
+                "category": case.category,
+                "input": case.input,
+                "expected_intent": case.expected_intent,
+                "expected_tool": case.expected_tool,
+                "got_intent": got_intent,
+                "got_confidence": result.get("confidence"),
+                "got_decision": result.get("decision"),
+                "passed": passed,
+                "latency_ms": latency_ms,
+                "error": error,
+            }
+            fh.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+    print(f"\nOverall: {correct}/{total} = {100*correct/total:.1f}%")
+    print("\nPer-class accuracy:")
+    for intent_class in sorted(class_totals):
+        c = class_correct.get(intent_class, 0)
+        t = class_totals[intent_class]
+        flag = "" if c == t else " ← needs more seeds"
+        print(f"  {intent_class:45s} {c}/{t}{flag}")
+
+    print(f"\nresults: {run_dir}")
+    return run_dir
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="NutriWhite agent model evaluation")
     parser.add_argument(
@@ -228,10 +340,19 @@ def main() -> None:
         default="haiku-4.5,gemini-3-flash,gpt-5-mini",
         help=f"Comma-separated model aliases. Available: {', '.join(MODEL_REGISTRY)}",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["generation", "intent"],
+        default="generation",
+        help="generation: side-by-side model eval; intent: classify_intent correctness",
+    )
     args = parser.parse_args()
 
-    models = [m.strip() for m in args.models.split(",") if m.strip()]
-    run(models)
+    if args.mode == "intent":
+        run_intent_eval()
+    else:
+        models = [m.strip() for m in args.models.split(",") if m.strip()]
+        run(models)
 
 
 if __name__ == "__main__":

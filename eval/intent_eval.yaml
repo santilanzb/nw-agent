@@ -1,0 +1,1051 @@
+# Intent classifier evaluation cases.
+# Each case: id, expected_intent, expected_tool, input, and optional expected[] assertions.
+# Run with: python -m eval.run_eval --mode intent
+# Requires a running rag-api with seeded intent_vectors.
+
+cases:
+
+  # ── faq_location ─────────────────────────────────────────────────────────
+
+  - id: faq_location_001
+    category: faq
+    expected_intent: faq_location
+    expected_tool: faq_location
+    sender_phone: "+584246120923"
+    input: "Hola, dónde están ubicados?"
+    expected:
+      - tool_called: faq_location
+      - language: es
+
+  - id: faq_location_002
+    category: faq
+    expected_intent: faq_location
+    expected_tool: faq_location
+    sender_phone: "+584246120923"
+    input: "cuál es la dirección exacta de la sede"
+    expected:
+      - tool_called: faq_location
+
+  - id: faq_location_003
+    category: faq
+    expected_intent: faq_location
+    expected_tool: faq_location
+    sender_phone: "+584246120923"
+    input: "en qué parte de Caracas los encuentro"
+    expected:
+      - tool_called: faq_location
+
+  - id: faq_location_004
+    category: faq
+    expected_intent: faq_location
+    expected_tool: faq_location
+    sender_phone: "+584246120923"
+    input: "tienen sede física o solo son online"
+    expected:
+      - tool_called: faq_location
+
+  - id: faq_location_005
+    category: faq
+    expected_intent: faq_location
+    expected_tool: faq_location
+    sender_phone: "+584246120923"
+    input: "donde te encuentro"
+    expected:
+      - tool_called: faq_location
+
+  # ── faq_services ─────────────────────────────────────────────────────────
+
+  - id: faq_services_001
+    category: faq
+    expected_intent: faq_services
+    expected_tool: faq_services
+    sender_phone: "+584246120923"
+    input: "qué servicios ofrecen"
+    expected:
+      - tool_called: faq_services
+
+  - id: faq_services_002
+    category: faq
+    expected_intent: faq_services
+    expected_tool: faq_services
+    sender_phone: "+584246120923"
+    input: "qué venden en NutriWhite"
+    expected:
+      - tool_called: faq_services
+
+  - id: faq_services_003
+    category: faq
+    expected_intent: faq_services
+    expected_tool: faq_services
+    sender_phone: "+584246120923"
+    input: "en qué se especializan"
+    expected:
+      - tool_called: faq_services
+
+  - id: faq_services_004
+    category: faq
+    expected_intent: faq_services
+    expected_tool: faq_services
+    sender_phone: "+584246120923"
+    input: "qué hace NutriWhite exactamente"
+    expected:
+      - tool_called: faq_services
+
+  - id: faq_services_005
+    category: faq
+    expected_intent: faq_services
+    expected_tool: faq_services
+    sender_phone: "+584246120923"
+    input: "qué puedo comprar con ustedes"
+    expected:
+      - tool_called: faq_services
+
+  # ── faq_consultation_plans ────────────────────────────────────────────────
+
+  - id: faq_plans_001
+    category: faq
+    expected_intent: faq_consultation_plans
+    expected_tool: faq_consultation_plans
+    sender_phone: "+584246120923"
+    input: "cuánto cuesta el Plan 3"
+    expected:
+      - tool_called: faq_consultation_plans
+
+  - id: faq_plans_002
+    category: faq
+    expected_intent: faq_consultation_plans
+    expected_tool: faq_consultation_plans
+    sender_phone: "+584246120923"
+    input: "qué planes tienen disponibles"
+    expected:
+      - tool_called: faq_consultation_plans
+
+  - id: faq_plans_003
+    category: faq
+    expected_intent: faq_consultation_plans
+    expected_tool: faq_consultation_plans
+    sender_phone: "+584246120923"
+    input: "precios de los planes"
+    expected:
+      - tool_called: faq_consultation_plans
+
+  - id: faq_plans_004
+    category: faq
+    expected_intent: faq_consultation_plans
+    expected_tool: faq_consultation_plans
+    sender_phone: "+584246120923"
+    input: "qué incluye el Plan 5"
+    expected:
+      - tool_called: faq_consultation_plans
+
+  - id: faq_plans_005
+    category: faq
+    expected_intent: faq_consultation_plans
+    expected_tool: faq_consultation_plans
+    sender_phone: "+584246120923"
+    input: "Dame mas informacion acerca del Plan 3. Que incluye?"
+    expected:
+      - tool_called: faq_consultation_plans
+
+  # ── faq_payment_methods ───────────────────────────────────────────────────
+
+  - id: faq_payment_001
+    category: faq
+    expected_intent: faq_payment_methods
+    expected_tool: faq_payment_methods
+    sender_phone: "+584246120923"
+    input: "cómo puedo pagar"
+    expected:
+      - tool_called: faq_payment_methods
+
+  - id: faq_payment_002
+    category: faq
+    expected_intent: faq_payment_methods
+    expected_tool: faq_payment_methods
+    sender_phone: "+584246120923"
+    input: "aceptan Zelle"
+    expected:
+      - tool_called: faq_payment_methods
+
+  - id: faq_payment_003
+    category: faq
+    expected_intent: faq_payment_methods
+    expected_tool: faq_payment_methods
+    sender_phone: "+584246120923"
+    input: "se puede pagar en cuotas"
+    expected:
+      - tool_called: faq_payment_methods
+
+  - id: faq_payment_004
+    category: faq
+    expected_intent: faq_payment_methods
+    expected_tool: faq_payment_methods
+    sender_phone: "+584246120923"
+    input: "trabajan con seguros"
+    expected:
+      - tool_called: faq_payment_methods
+
+  - id: faq_payment_005
+    category: faq
+    expected_intent: faq_payment_methods
+    expected_tool: faq_payment_methods
+    sender_phone: "+584246120923"
+    input: "cuánto es la comisión si pago con TDC"
+    expected:
+      - tool_called: faq_payment_methods
+
+  # ── faq_consultation_call ─────────────────────────────────────────────────
+
+  - id: faq_call_001
+    category: faq
+    expected_intent: faq_consultation_call
+    expected_tool: kb_search
+    sender_phone: "+584246120923"
+    input: "tienen llamada gratis"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_call_002
+    category: faq
+    expected_intent: faq_consultation_call
+    expected_tool: kb_search
+    sender_phone: "+584246120923"
+    input: "cómo agendo la evaluación gratuita"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_call_003
+    category: faq
+    expected_intent: faq_consultation_call
+    expected_tool: kb_search
+    sender_phone: "+584246120923"
+    input: "quiero la llamada de 15 minutos"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_call_004
+    category: faq
+    expected_intent: faq_consultation_call
+    expected_tool: kb_search
+    sender_phone: "+584246120923"
+    input: "el link de la llamada informativa"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_call_005
+    category: faq
+    expected_intent: faq_consultation_call
+    expected_tool: kb_search
+    sender_phone: "+584246120923"
+    input: "evaluación gratis de 15 minutos"
+    expected:
+      - tool_called: kb_search
+
+  # ── faq_protocol_3r ───────────────────────────────────────────────────────
+
+  - id: faq_3r_001
+    category: faq
+    expected_intent: faq_protocol_3r
+    expected_tool: kb_search
+    sender_phone: "+584246120923"
+    input: "qué es el Protocolo 3R"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_3r_002
+    category: faq
+    expected_intent: faq_protocol_3r
+    expected_tool: kb_search
+    sender_phone: "+584246120923"
+    input: "cómo es su abordaje"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_3r_003
+    category: faq
+    expected_intent: faq_protocol_3r
+    expected_tool: kb_search
+    sender_phone: "+584246120923"
+    input: "en qué consiste el Protocolo 3R de inmunonutrición"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_3r_004
+    category: faq
+    expected_intent: faq_protocol_3r
+    expected_tool: kb_search
+    sender_phone: "+584246120923"
+    input: "qué significa remover reponer recuperar"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_3r_005
+    category: faq
+    expected_intent: faq_protocol_3r
+    expected_tool: kb_search
+    sender_phone: "+584246120923"
+    input: "metodología de tratamiento de NutriWhite"
+    expected:
+      - tool_called: kb_search
+
+  # ── faq_supplements_general ───────────────────────────────────────────────
+
+  - id: faq_supps_001
+    category: faq
+    expected_intent: faq_supplements_general
+    expected_tool: kb_search
+    sender_phone: "+17865213822"
+    input: "cómo consigo los suplementos desde Florida"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_supps_002
+    category: faq
+    expected_intent: faq_supplements_general
+    expected_tool: kb_search
+    sender_phone: "+584246120923"
+    input: "qué suplementos venden"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_supps_003
+    category: faq
+    expected_intent: faq_supplements_general
+    expected_tool: kb_search
+    sender_phone: "+17865213822"
+    input: "cómo funciona Fullscript"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_supps_004
+    category: faq
+    expected_intent: faq_supplements_general
+    expected_tool: kb_search
+    sender_phone: "+584246120923"
+    input: "cómo compro suplementos en Venezuela"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_supps_005
+    category: faq
+    expected_intent: faq_supplements_general
+    expected_tool: kb_search
+    sender_phone: "+17865213822"
+    input: "Wholescripts como funciona"
+    expected:
+      - tool_called: kb_search
+
+  # ── faq_exams_general ─────────────────────────────────────────────────────
+
+  - id: faq_exams_001
+    category: faq
+    expected_intent: faq_exams_general
+    expected_tool: kb_search
+    sender_phone: "+584246120923"
+    input: "qué exámenes hacen"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_exams_002
+    category: faq
+    expected_intent: faq_exams_general
+    expected_tool: kb_search
+    sender_phone: "+17865213822"
+    input: "qué es el GI MAP"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_exams_003
+    category: faq
+    expected_intent: faq_exams_general
+    expected_tool: kb_search
+    sender_phone: "+17865213822"
+    input: "cómo funciona el examen de microbiota si vivo afuera"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_exams_004
+    category: faq
+    expected_intent: faq_exams_general
+    expected_tool: kb_search
+    sender_phone: "+584246120923"
+    input: "tienen examen de metales pesados"
+    expected:
+      - tool_called: kb_search
+
+  - id: faq_exams_005
+    category: faq
+    expected_intent: faq_exams_general
+    expected_tool: kb_search
+    sender_phone: "+584246120923"
+    input: "cuánto cuesta el examen de microbiota"
+    expected:
+      - tool_called: kb_search
+
+  # ── patient_plan_status ───────────────────────────────────────────────────
+
+  - id: patient_plan_001
+    category: patient
+    expected_intent: patient_plan_status
+    expected_tool: customer_lookup
+    sender_phone: "+584246120923"
+    input: "cuántas consultas me quedan"
+    expected:
+      - tool_called: customer_lookup
+
+  - id: patient_plan_002
+    category: patient
+    expected_intent: patient_plan_status
+    expected_tool: customer_lookup
+    sender_phone: "+584246120923"
+    input: "cuál es mi plan activo"
+    expected:
+      - tool_called: customer_lookup
+
+  - id: patient_plan_003
+    category: patient
+    expected_intent: patient_plan_status
+    expected_tool: customer_lookup
+    sender_phone: "+584246120923"
+    input: "qué plan compré"
+    expected:
+      - tool_called: customer_lookup
+
+  - id: patient_plan_004
+    category: patient
+    expected_intent: patient_plan_status
+    expected_tool: customer_lookup
+    sender_phone: "+584246120923"
+    input: "me quedan sesiones disponibles"
+    expected:
+      - tool_called: customer_lookup
+
+  - id: patient_plan_005
+    category: patient
+    expected_intent: patient_plan_status
+    expected_tool: customer_lookup
+    sender_phone: "+584246120923"
+    input: "cuándo vence mi plan"
+    expected:
+      - tool_called: customer_lookup
+
+  # ── patient_appointment_status ────────────────────────────────────────────
+
+  - id: patient_appt_001
+    category: patient
+    expected_intent: patient_appointment_status
+    expected_tool: customer_lookup
+    sender_phone: "+584149999999"
+    input: "cuándo es mi próxima consulta"
+    expected:
+      - tool_called: customer_lookup
+
+  - id: patient_appt_002
+    category: patient
+    expected_intent: patient_appointment_status
+    expected_tool: customer_lookup
+    sender_phone: "+584149999999"
+    input: "me puedes dar el link de la videollamada"
+    expected:
+      - tool_called: customer_lookup
+
+  - id: patient_appt_003
+    category: patient
+    expected_intent: patient_appointment_status
+    expected_tool: customer_lookup
+    sender_phone: "+584149999999"
+    input: "a qué hora es mi cita"
+    expected:
+      - tool_called: customer_lookup
+
+  - id: patient_appt_004
+    category: patient
+    expected_intent: patient_appointment_status
+    expected_tool: customer_lookup
+    sender_phone: "+584149999999"
+    input: "link de mi cita de hoy"
+    expected:
+      - tool_called: customer_lookup
+
+  - id: patient_appt_005
+    category: patient
+    expected_intent: patient_appointment_status
+    expected_tool: customer_lookup
+    sender_phone: "+584149999999"
+    input: "cuándo tengo consulta programada"
+    expected:
+      - tool_called: customer_lookup
+
+  # ── patient_exam_status ───────────────────────────────────────────────────
+
+  - id: patient_exam_001
+    category: patient
+    expected_intent: patient_exam_status
+    expected_tool: customer_lookup
+    sender_phone: "+584149999999"
+    input: "ya llegaron mis resultados del examen"
+    expected:
+      - tool_called: customer_lookup
+
+  - id: patient_exam_002
+    category: patient
+    expected_intent: patient_exam_status
+    expected_tool: customer_lookup
+    sender_phone: "+584149999999"
+    input: "cómo está mi GI MAP"
+    expected:
+      - tool_called: customer_lookup
+
+  - id: patient_exam_003
+    category: patient
+    expected_intent: patient_exam_status
+    expected_tool: customer_lookup
+    sender_phone: "+584149999999"
+    input: "cuándo me dan los resultados del examen de microbiota"
+    expected:
+      - tool_called: customer_lookup
+
+  - id: patient_exam_004
+    category: patient
+    expected_intent: patient_exam_status
+    expected_tool: customer_lookup
+    sender_phone: "+584149999999"
+    input: "ya procesaron mi muestra"
+    expected:
+      - tool_called: customer_lookup
+
+  - id: patient_exam_005
+    category: patient
+    expected_intent: patient_exam_status
+    expected_tool: customer_lookup
+    sender_phone: "+584149999999"
+    input: "mis resultados están listos"
+    expected:
+      - tool_called: customer_lookup
+
+  # ── handoff_specialist_recommendation ────────────────────────────────────
+
+  - id: handoff_specialist_001
+    category: handoff
+    expected_intent: handoff_specialist_recommendation
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "Necesito que me recomiendes un especialista, tengo gastritis crónica"
+    expected:
+      - tool_called: handoff_human
+      - response_contains: "asesora"
+      - language: es
+
+  - id: handoff_specialist_002
+    category: handoff
+    expected_intent: handoff_specialist_recommendation
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "qué especialista me recomiendas para tiroides"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_specialist_003
+    category: handoff
+    expected_intent: handoff_specialist_recommendation
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "cuál doctora es mejor para mi caso"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_specialist_004
+    category: handoff
+    expected_intent: handoff_specialist_recommendation
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "a quién debería ver para problemas digestivos"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_specialist_005
+    category: handoff
+    expected_intent: handoff_specialist_recommendation
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "recomiéndame un nutricionista"
+    expected:
+      - tool_called: handoff_human
+
+  # ── handoff_scheduling ────────────────────────────────────────────────────
+
+  - id: handoff_sched_001
+    category: handoff
+    expected_intent: handoff_scheduling
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "Tienen cupo el lunes en la tarde con Mariana White?"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_sched_002
+    category: handoff
+    expected_intent: handoff_scheduling
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "quiero agendar una consulta"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_sched_003
+    category: handoff
+    expected_intent: handoff_scheduling
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "hay disponibilidad esta semana"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_sched_004
+    category: handoff
+    expected_intent: handoff_scheduling
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "cómo reservo un turno"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_sched_005
+    category: handoff
+    expected_intent: handoff_scheduling
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "cuándo pueden verme"
+    expected:
+      - tool_called: handoff_human
+
+  # ── handoff_discount ──────────────────────────────────────────────────────
+
+  - id: handoff_discount_001
+    category: handoff
+    expected_intent: handoff_discount
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "Me hacen descuento si compro el plan 3 y le pago a mi esposo el examen?"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_discount_002
+    category: handoff
+    expected_intent: handoff_discount
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "tienen alguna promoción"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_discount_003
+    category: handoff
+    expected_intent: handoff_discount
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "precio especial para plan familiar"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_discount_004
+    category: handoff
+    expected_intent: handoff_discount
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "me pueden dar una rebaja"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_discount_005
+    category: handoff
+    expected_intent: handoff_discount
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "hay descuento si compro para dos personas"
+    expected:
+      - tool_called: handoff_human
+
+  # ── handoff_medical_advice ────────────────────────────────────────────────
+
+  - id: handoff_medical_001
+    category: handoff
+    expected_intent: handoff_medical_advice
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "Tengo dolor de estómago hace 3 días, qué tomo?"
+    expected:
+      - tool_called: handoff_human
+      - does_not_diagnose: true
+
+  - id: handoff_medical_002
+    category: handoff
+    expected_intent: handoff_medical_advice
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "qué puedo comer si tengo colitis"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_medical_003
+    category: handoff
+    expected_intent: handoff_medical_advice
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "me duele mucho el estómago"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_medical_004
+    category: handoff
+    expected_intent: handoff_medical_advice
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "qué suplemento me recomiendas para la inflamación"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_medical_005
+    category: handoff
+    expected_intent: handoff_medical_advice
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "qué tomo para el reflujo"
+    expected:
+      - tool_called: handoff_human
+
+  # ── handoff_refund ────────────────────────────────────────────────────────
+
+  - id: handoff_refund_001
+    category: handoff
+    expected_intent: handoff_refund
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "Quiero un reembolso, no quedé satisfecha con mi consulta"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_refund_002
+    category: handoff
+    expected_intent: handoff_refund
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "me cobraron mal quiero una devolución"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_refund_003
+    category: handoff
+    expected_intent: handoff_refund
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "necesito la factura de mi consulta"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_refund_004
+    category: handoff
+    expected_intent: handoff_refund
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "hay un error en el cobro que me hicieron"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_refund_005
+    category: handoff
+    expected_intent: handoff_refund
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "quiero cancelar y que me devuelvan el dinero"
+    expected:
+      - tool_called: handoff_human
+
+  # ── handoff_post_payment_logistics ────────────────────────────────────────
+
+  - id: handoff_logistics_001
+    category: handoff
+    expected_intent: handoff_post_payment_logistics
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "Ya pagué y no me ha llegado el kit del examen, qué pasó?"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_logistics_002
+    category: handoff
+    expected_intent: handoff_post_payment_logistics
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "ya hice la transferencia y no recibí nada"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_logistics_003
+    category: handoff
+    expected_intent: handoff_post_payment_logistics
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "mi kit de examen no ha llegado"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_logistics_004
+    category: handoff
+    expected_intent: handoff_post_payment_logistics
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "pagué pero no recibí el acceso al plan"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_logistics_005
+    category: handoff
+    expected_intent: handoff_post_payment_logistics
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "ya pagué dónde está mi pedido"
+    expected:
+      - tool_called: handoff_human
+
+  # ── handoff_english ───────────────────────────────────────────────────────
+
+  - id: handoff_english_001
+    category: handoff
+    expected_intent: handoff_english
+    expected_tool: handoff_human
+    sender_phone: "+17865213822"
+    input: "Hi, I want to know about the GI MAP test for my baby"
+    expected:
+      - tool_called: handoff_human
+      - language_response: english_handoff_phrase
+
+  - id: handoff_english_002
+    category: handoff
+    expected_intent: handoff_english
+    expected_tool: handoff_human
+    sender_phone: "+17865213822"
+    input: "do you speak english"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_english_003
+    category: handoff
+    expected_intent: handoff_english
+    expected_tool: handoff_human
+    sender_phone: "+17865213822"
+    input: "i need help with my appointment"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_english_004
+    category: handoff
+    expected_intent: handoff_english
+    expected_tool: handoff_human
+    sender_phone: "+17865213822"
+    input: "hello can you help me please"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_english_005
+    category: handoff
+    expected_intent: handoff_english
+    expected_tool: handoff_human
+    sender_phone: "+17865213822"
+    input: "I want to schedule a consultation"
+    expected:
+      - tool_called: handoff_human
+
+  # ── handoff_distress ──────────────────────────────────────────────────────
+
+  - id: handoff_distress_001
+    category: handoff
+    expected_intent: handoff_distress
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "estoy muy desesperada ya no puedo más"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_distress_002
+    category: handoff
+    expected_intent: handoff_distress
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "esto es una estafa me siento horrible"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_distress_003
+    category: handoff
+    expected_intent: handoff_distress
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "ya no puedo más nadie me ayuda"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_distress_004
+    category: handoff
+    expected_intent: handoff_distress
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "estoy al límite me siento muy mal"
+    expected:
+      - tool_called: handoff_human
+
+  - id: handoff_distress_005
+    category: handoff
+    expected_intent: handoff_distress
+    expected_tool: handoff_human
+    sender_phone: "+584246120923"
+    input: "siento que nadie me entiende y estoy desesperada"
+    expected:
+      - tool_called: handoff_human
+
+  # ── greeting ──────────────────────────────────────────────────────────────
+
+  - id: greeting_001
+    category: conversational
+    expected_intent: greeting
+    expected_tool: null
+    sender_phone: "+584246120923"
+    input: "Hola buenos días"
+    expected:
+      - no_tool_call: true
+      - warm_greeting: true
+
+  - id: greeting_002
+    category: conversational
+    expected_intent: greeting
+    expected_tool: null
+    sender_phone: "+584246120923"
+    input: "buenas tardes"
+    expected:
+      - no_tool_call: true
+
+  - id: greeting_003
+    category: conversational
+    expected_intent: greeting
+    expected_tool: null
+    sender_phone: "+584246120923"
+    input: "hola buen dia"
+    expected:
+      - no_tool_call: true
+
+  - id: greeting_004
+    category: conversational
+    expected_intent: greeting
+    expected_tool: null
+    sender_phone: "+584246120923"
+    input: "hey saludos"
+    expected:
+      - no_tool_call: true
+
+  - id: greeting_005
+    category: conversational
+    expected_intent: greeting
+    expected_tool: null
+    sender_phone: "+584246120923"
+    input: "hola buenas"
+    expected:
+      - no_tool_call: true
+
+  # ── farewell ──────────────────────────────────────────────────────────────
+
+  - id: farewell_001
+    category: conversational
+    expected_intent: farewell
+    expected_tool: null
+    sender_phone: "+584246120923"
+    input: "muchas gracias hasta luego"
+    expected:
+      - no_tool_call: true
+
+  - id: farewell_002
+    category: conversational
+    expected_intent: farewell
+    expected_tool: null
+    sender_phone: "+584246120923"
+    input: "chao gracias por todo"
+    expected:
+      - no_tool_call: true
+
+  - id: farewell_003
+    category: conversational
+    expected_intent: farewell
+    expected_tool: null
+    sender_phone: "+584246120923"
+    input: "hasta pronto"
+    expected:
+      - no_tool_call: true
+
+  - id: farewell_004
+    category: conversational
+    expected_intent: farewell
+    expected_tool: null
+    sender_phone: "+584246120923"
+    input: "gracias y hasta la próxima"
+    expected:
+      - no_tool_call: true
+
+  - id: farewell_005
+    category: conversational
+    expected_intent: farewell
+    expected_tool: null
+    sender_phone: "+584246120923"
+    input: "bye nos vemos"
+    expected:
+      - no_tool_call: true
+
+  # ── acknowledgment ────────────────────────────────────────────────────────
+
+  - id: ack_001
+    category: conversational
+    expected_intent: acknowledgment
+    expected_tool: null
+    sender_phone: "+584246120923"
+    input: "ok"
+    expected:
+      - no_tool_call: true
+      - no_reply: true
+
+  - id: ack_002
+    category: conversational
+    expected_intent: acknowledgment
+    expected_tool: null
+    sender_phone: "+584246120923"
+    input: "perfecto"
+    expected:
+      - no_tool_call: true
+      - no_reply: true
+
+  - id: ack_003
+    category: conversational
+    expected_intent: acknowledgment
+    expected_tool: null
+    sender_phone: "+584246120923"
+    input: "entendido"
+    expected:
+      - no_tool_call: true
+      - no_reply: true
+
+  - id: ack_004
+    category: conversational
+    expected_intent: acknowledgment
+    expected_tool: null
+    sender_phone: "+584246120923"
+    input: "de acuerdo"
+    expected:
+      - no_tool_call: true
+      - no_reply: true
+
+  - id: ack_005
+    category: conversational
+    expected_intent: acknowledgment
+    expected_tool: null
+    sender_phone: "+584246120923"
+    input: "👍"
+    expected:
+      - no_tool_call: true
+      - no_reply: true
