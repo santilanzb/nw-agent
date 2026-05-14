@@ -116,10 +116,15 @@ export default definePluginEntry({
   name: "Customer Service Tools",
   description: "NutriWhite tools for knowledge retrieval and Zoho-backed patient workflows.",
   register(api) {
+    console.log("[customer-service-tools] register() called");
     const { ragApiUrl, crmAdapterUrl, internalApiKey } = pluginConfig(api);
 
     // ── Inbound claim hook: deterministic dispatch before LLM is invoked ────
-    api.registerHook("inbound_claim", async (event) => {
+    // NOTE: Use api.on() for typed plugin hooks like inbound_claim. The
+    // generic api.registerHook() targets internal hooks and silently fails
+    // to load plugin-hook names, which prevented this plugin from loading
+    // at all in OpenClaw v2026.5.7.
+    api.on("inbound_claim", async (event) => {
       // Group messages are team commands — let LLM handle
       if (event.isGroup) return { handled: false };
 
