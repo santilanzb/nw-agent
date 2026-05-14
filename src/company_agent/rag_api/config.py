@@ -21,3 +21,12 @@ class RagSettings(BaseSettings):
     )
     retrieval_top_k_default: int = 5
     retrieval_candidate_pool: int = 12
+
+    # Intent classifier thresholds
+    intent_threshold_execute: float = Field(default=0.80, alias="INTENT_THRESHOLD_EXECUTE")
+    intent_threshold_clarify: float = Field(default=0.55, alias="INTENT_THRESHOLD_CLARIFY")
+    intent_tiebreak_margin: float = Field(default=0.05, alias="INTENT_TIEBREAK_MARGIN")
+    intent_seeds_path: str = Field(
+        default="intents/intent_seeds.yaml",
+        alias="INTENT_SEEDS_PATH",
+    )

@@ -10,7 +10,14 @@ from company_agent.common.embeddings import EmbeddingClient, EmbeddingConfig
 from company_agent.common.logging import configure_logging
 
 from .config import RagSettings
-from .schemas import HealthResponse, RetrieveRequest, RetrieveResponse
+from .intent import IntentClassifier
+from .schemas import (
+    ClassifyIntentRequest,
+    ClassifyIntentResponse,
+    HealthResponse,
+    RetrieveRequest,
+    RetrieveResponse,
+)
 from .search import KnowledgeSearcher
 
 settings = RagSettings()
@@ -23,6 +30,7 @@ embedding_client = EmbeddingClient(
     )
 )
 searcher = KnowledgeSearcher(settings=settings, embeddings=embedding_client)
+classifier = IntentClassifier(settings=settings, embeddings=embedding_client)
 
 app = FastAPI(title="RAG API", version="0.1.0")
 InternalApiKey = Annotated[None, Depends(require_internal_api_key(settings.internal_api_key))]
@@ -37,6 +45,12 @@ def health() -> HealthResponse:
 def retrieve(request: RetrieveRequest, _auth: InternalApiKey) -> RetrieveResponse:
     logger.info("retrieval request query=%r top_k=%s", request.query, request.top_k)
     return searcher.search(request)
+
+
+@app.post("/v1/classify_intent", response_model=ClassifyIntentResponse)
+def classify_intent(request: ClassifyIntentRequest, _auth: InternalApiKey) -> ClassifyIntentResponse:
+    logger.info("classify_intent message=%r language=%s", request.message[:80], request.language_hint)
+    return classifier.classify(request)
 
 
 def run() -> None:
