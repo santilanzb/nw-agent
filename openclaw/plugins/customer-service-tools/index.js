@@ -166,11 +166,7 @@ export default definePluginEntry({
           "Usa esta herramienta para responder de forma directa cuando pregunten donde esta NutriWhite, ubicacion, sede o direccion.",
         parameters: Type.Object({}),
         async execute() {
-          return faqAnswer(
-            "ubicacion",
-            "NutriWhite esta en Caracas, Venezuela, en Alta Florida, Avenida Los Mangos, Centro Deportivo Caracas MultiSport, Piso 1. Tambien ofrecemos consultas online para pacientes desde cualquier lugar.",
-            "knowledge/raw/01_company_overview.md",
-          );
+          return faqAnswer("ubicacion", DIRECT_FAQ_REPLIES.faq_location, "knowledge/raw/01_company_overview.md");
         },
       },
     );
@@ -182,11 +178,7 @@ export default definePluginEntry({
           "Usa esta herramienta para responder que ofrece NutriWhite, que productos/servicios tiene, o que puede comprar un paciente.",
         parameters: Type.Object({}),
         async execute() {
-          return faqAnswer(
-            "servicios",
-            "NutriWhite ofrece consultas de Inmunonutricion, consultas de nutricion, examenes especializados, suplementos especificos coordinados segun la ubicacion del paciente, evaluacion gratuita de salud, llamada gratuita de 15 minutos y acompanamiento con el Protocolo 3R. Para suplementos, fuera de Venezuela se trabaja con Fullscript y Wholescripts; en Venezuela coordina el equipo de logistica interna.",
-            "knowledge/raw/01_company_overview.md; knowledge/raw/04_supplements.md",
-          );
+          return faqAnswer("servicios", DIRECT_FAQ_REPLIES.faq_services, "knowledge/raw/01_company_overview.md; knowledge/raw/04_supplements.md");
         },
       },
     );
@@ -198,11 +190,7 @@ export default definePluginEntry({
           "Usa esta herramienta para responder que planes de consulta hay disponibles, precios de planes, costo de planes, que incluye cada plan, detalles de Plan 1/Plan 3/Plan 5 o informacion comercial general de planes. No uses customer_lookup para informacion publica de planes.",
         parameters: Type.Object({}),
         async execute() {
-          return faqAnswer(
-            "planes_consulta",
-            "Planes disponibles: Plan 1 Consulta (Basico): $229 USD, duracion 1 mes, 1 consulta de 90 minutos. Incluye evaluacion clinico/nutricional, informe con plan de accion, plan de alimentacion general, guia del Protocolo 3R, recomendacion de examenes especializados y recomendacion de suplementos. Plan 3 Consultas (Mas Recomendado): $559 USD, duracion 3 meses, 3 consultas/seguimientos. Incluye todo lo del Plan 1, mas acompanamiento de dos embajadoras, plan nutricional personalizado, emails semanales, coleccion de 20+ recetas, 1 curso de la Academia, grupo de soporte por WhatsApp, entrega de menu, material de consulta y lista de productos. Estructura: primera cita de 90 min, control 10-15 dias despues, segunda consulta de 90 min. Plan 5 Consultas (Premium): $789 USD, duracion 5 meses, 5 consultas/seguimientos. Incluye todo lo del Plan 3, mas bootcamp de 10 dias, acceso a todos los cursos de la Academia, acceso a webinars y descuentos en eventos. Los planes incluyen recomendacion de examenes; no digas que los examenes estan incluidos en el precio. No calcules cuotas ni comisiones; si preguntan por cuotas, indica que son solo con TDC y se agrega 3% de comision bancaria.",
-            "knowledge/raw/02_consultation_plans.md",
-          );
+          return faqAnswer("planes_consulta", DIRECT_FAQ_REPLIES.faq_consultation_plans, "knowledge/raw/02_consultation_plans.md");
         },
       },
     );
@@ -214,11 +202,7 @@ export default definePluginEntry({
           "Usa esta herramienta para metodos de pago, cuotas, TDC, comision, seguro o reembolso.",
         parameters: Type.Object({}),
         async execute() {
-          return faqAnswer(
-            "pagos",
-            "Metodos de pago: PayPal, Zelle, Tarjeta de Credito (TDC), Efectivo y Pago movil en Venezuela. Las cuotas estan disponibles unicamente con TDC y se agrega 3% de comision bancaria. NutriWhite no trabaja directamente con seguros, pero puede emitir factura para que el paciente gestione reembolso con su corredor si su seguro cubre nutricion.",
-            "knowledge/raw/02_consultation_plans.md; knowledge/raw/06_faq.md",
-          );
+          return faqAnswer("pagos", DIRECT_FAQ_REPLIES.faq_payment_methods, "knowledge/raw/02_consultation_plans.md; knowledge/raw/06_faq.md");
         },
       },
     );
