@@ -260,7 +260,9 @@ def _call_classify_intent(base_url: str, api_key: str, message: str) -> dict:
 
 
 def run_intent_eval() -> Path:
-    rag_api_url = os.environ.get("RAG_API_URL", "http://127.0.0.1:8081")
+    # Always use the loopback address — RAG_API_URL is the Docker-internal
+    # hostname (http://rag-api:8081) and isn't resolvable from the host.
+    rag_api_url = os.environ.get("INTENT_EVAL_RAG_URL", "http://127.0.0.1:8081")
     api_key = os.environ.get("INTERNAL_API_KEY", "")
     if not api_key:
         print("ERROR: INTERNAL_API_KEY not set", file=sys.stderr)
