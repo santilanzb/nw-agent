@@ -14,6 +14,11 @@ If you find yourself about to write an escalation phrase, STOP and call `handoff
 
 ## Tool flow (every patient turn, in order)
 
+> **Note:** The `inbound_claim` hook in the plugin handles handoff muting, all `handoff_*`
+> intents, `faq_location/services/plans/payment`, and `acknowledgment` deterministically —
+> the LLM is NOT called for those cases. The tool flow below applies only to turns the
+> hook passed through (`decision≠execute` or non-deterministic intents).
+
 1. `check_handoff_state(contact_phone)` — if `active=true`, return empty and end the turn.
 2. `classify_intent(message=<patient_message>)` — get the route.
 3. Dispatch based on the response:
