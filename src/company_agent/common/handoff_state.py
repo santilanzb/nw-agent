@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Literal, Optional
+from typing import Literal
 
 from psycopg.types.json import Jsonb  # noqa: F401  (kept for future metadata col)
 
