@@ -1,0 +1,446 @@
+# Intent seed phrases for the NutriWhite classify_intent classifier.
+# ~10 phrases per intent, sourced from:
+#   - eval/seeds.yaml real cases
+#   - knowledge/raw/06_faq.md and 08_agent_voice.md phrasing
+#   - openclaw/plugins/customer-service-tools/index.js tool descriptions
+#   - Spanish paraphrases (tú, Caracas-friendly, varied surface form)
+#
+# dispatch.tool: the first tool the agent should call for this intent.
+# dispatch.params: suggested params to merge with agent context.
+# Conversational intents have tool=null (direct response, no tool call).
+
+intents:
+
+  # ── FAQ — deterministic canned-answer tools ─────────────────────────────────
+
+  faq_location:
+    description: "Patient asks where NutriWhite is located"
+    dispatch:
+      tool: faq_location
+      params: {}
+    examples:
+      - "donde están ubicados"
+      - "cuál es la dirección"
+      - "dónde queda la sede"
+      - "en qué parte de Caracas están"
+      - "ubicación"
+      - "puedo ir a la sede física"
+      - "tienen una oficina"
+      - "donde te encuentro"
+      - "cuál es la dirección exacta"
+      - "tienen sede fisica en Caracas"
+      - "donde quedan ustedes"
+      - "dónde están"
+
+  faq_services:
+    description: "Patient asks what NutriWhite offers or sells"
+    dispatch:
+      tool: faq_services
+      params: {}
+    examples:
+      - "qué ofrecen"
+      - "qué servicios tienen"
+      - "qué venden"
+      - "qué productos tienen disponibles"
+      - "cómo pueden ayudarme"
+      - "qué hace NutriWhite"
+      - "en qué se especializan"
+      - "qué es NutriWhite"
+      - "qué servicios ofrecen"
+      - "que puedo comprar en NutriWhite"
+      - "qué tiene disponible"
+      - "cuales son sus productos"
+
+  faq_consultation_plans:
+    description: "Patient asks about plan options, prices, or what a plan includes"
+    dispatch:
+      tool: faq_consultation_plans
+      params: {}
+    examples:
+      - "qué planes tienen"
+      - "cuánto cuesta el Plan 3"
+      - "precios"
+      - "qué incluye Plan 5"
+      - "cuáles son sus planes"
+      - "dame información del Plan 1"
+      - "cuánto vale el plan de tres consultas"
+      - "Plan 3 qué incluye"
+      - "cuánto es el Plan 5"
+      - "precio de los planes"
+      - "planes de consulta"
+      - "qué incluye el plan básico"
+      - "cuanto cuesta una consulta"
+
+  faq_payment_methods:
+    description: "Patient asks about payment methods, installments, insurance, or invoices"
+    dispatch:
+      tool: faq_payment_methods
+      params: {}
+    examples:
+      - "cómo pagar"
+      - "puedo pagar en cuotas"
+      - "aceptan TDC"
+      - "aceptan Zelle"
+      - "métodos de pago"
+      - "trabajan con seguros"
+      - "hacen facturas para seguro"
+      - "cuánto es la comisión de cuotas"
+      - "aceptan PayPal"
+      - "pueden facturar para mi seguro"
+      - "cómo pago"
+      - "cuáles son los métodos de pago"
+
+  faq_consultation_call:
+    description: "Patient asks about the free 15-minute informational call"
+    dispatch:
+      tool: kb_search
+      params:
+        query: "llamada gratis 15 minutos evaluacion informativa"
+    examples:
+      - "llamada gratis"
+      - "evaluación gratis"
+      - "quiero la llamada de 15 minutos"
+      - "cómo agendo la llamada gratuita"
+      - "tienen evaluación gratuita"
+      - "el link de la llamada gratis"
+      - "puedo tener una llamada informativa gratis"
+      - "la consulta de 15 minutos gratuita"
+      - "link para la llamada gratuita"
+      - "cómo accedo a la llamada informativa"
+      - "llamada informativa"
+      - "quiero una llamada de evaluación gratis"
+
+  faq_protocol_3r:
+    description: "Patient asks about the Protocolo 3R methodology"
+    dispatch:
+      tool: kb_search
+      params:
+        query: "Protocolo 3R remover reponer recuperar inmunonutricion"
+    examples:
+      - "qué es el Protocolo 3R"
+      - "remover reponer recuperar"
+      - "cómo funciona el protocolo"
+      - "en qué consiste el abordaje"
+      - "qué es el Protocolo 3R de Inmunonutrición"
+      - "cómo trabajan el Protocolo 3R"
+      - "qué es el protocolo de tres erres"
+      - "metodología del tratamiento"
+      - "qué es inmunonutrición"
+      - "cómo es el abordaje de NutriWhite"
+      - "cómo es su metodología"
+      - "el Protocolo 3R"
+
+  faq_supplements_general:
+    description: "Patient asks about supplements, Fullscript, or how to buy supplements"
+    dispatch:
+      tool: kb_search
+      params:
+        query: "suplementos Fullscript Wholescripts compra logistica"
+    examples:
+      - "qué suplementos venden"
+      - "Fullscript"
+      - "cómo compro suplementos"
+      - "dónde pido los suplementos"
+      - "venden suplementos"
+      - "qué suplementos hay disponibles"
+      - "cómo funcionan los suplementos"
+      - "cómo accedo a Fullscript"
+      - "tienen suplementos naturales"
+      - "cómo comprar suplementos desde Venezuela"
+      - "Wholescripts"
+      - "cómo llegan los suplementos a mi país"
+
+  faq_exams_general:
+    description: "Patient asks about what exams are available (not their own exam status)"
+    dispatch:
+      tool: kb_search
+      params:
+        query: "examenes GI MAP microbiota especializados disponibles"
+    examples:
+      - "qué exámenes hacen"
+      - "GI MAP"
+      - "examen de microbiota"
+      - "qué exámenes están disponibles"
+      - "cuánto cuesta el examen"
+      - "cómo funciona el examen de microbiota"
+      - "qué mide el GI MAP"
+      - "tienen examen de metales pesados"
+      - "exámenes especializados"
+      - "qué examen debo hacerme"
+      - "qué exámenes ofrecen"
+      - "atienden niños"
+
+  # ── Patient-specific — needs customer_lookup first ─────────────────────────
+
+  patient_plan_status:
+    description: "Patient asks about their own active plan or remaining consultations"
+    dispatch:
+      tool: customer_lookup
+      params: {}
+    examples:
+      - "cuál es mi plan"
+      - "cuántas consultas me quedan"
+      - "qué plan tengo contratado"
+      - "cuándo vence mi plan"
+      - "tengo Plan 3 activo"
+      - "mi plan"
+      - "cuántas consultas he usado"
+      - "me quedan consultas"
+      - "qué plan compré"
+      - "cuál es mi plan activo"
+      - "qué plan tengo"
+      - "cuántas sesiones tengo disponibles"
+
+  patient_appointment_status:
+    description: "Patient asks about their own scheduled appointment or consultation link"
+    dispatch:
+      tool: customer_lookup
+      params: {}
+    examples:
+      - "cuándo es mi consulta"
+      - "link de mi cita"
+      - "a qué hora es mi consulta"
+      - "cuándo es mi próxima cita"
+      - "me puedes dar el link de la videollamada"
+      - "tengo cita mañana"
+      - "cuándo tengo consulta"
+      - "información de mi cita"
+      - "mi próxima consulta"
+      - "cita programada"
+      - "cuándo me toca la consulta"
+      - "cuando es mi appointment"
+
+  patient_exam_status:
+    description: "Patient asks about the status of their own exam or results"
+    dispatch:
+      tool: customer_lookup
+      params: {}
+    examples:
+      - "llegó mi examen"
+      - "resultados"
+      - "mi GI MAP"
+      - "cómo está mi examen"
+      - "ya llegaron mis resultados"
+      - "cuándo llegan los resultados del examen"
+      - "mi examen de microbiota"
+      - "estado del examen"
+      - "ya procesaron mi muestra"
+      - "mis resultados están listos"
+      - "cuándo me dan los resultados"
+      - "resultados del examen"
+
+  # ── Handoff triggers — call handoff_human directly ─────────────────────────
+
+  handoff_specialist_recommendation:
+    description: "Patient asks which specialist or doctor to see"
+    dispatch:
+      tool: handoff_human
+      params:
+        reason: "specialist_recommendation"
+        priority: "high"
+    examples:
+      - "qué especialista me recomiendan"
+      - "cuál doctora es mejor para mi caso"
+      - "necesito que me recomienden alguien"
+      - "tengo gastritis quién me atiende"
+      - "qué nutricionista para problemas digestivos"
+      - "a quién debería ver"
+      - "cuál es la mejor especialista para mí"
+      - "recomiéndame una doctora"
+      - "qué especialista para tiroides"
+      - "cuál especialista atiende niños"
+      - "necesito que me recomiendes un especialista"
+      - "qué doctor me puede ver"
+
+  handoff_scheduling:
+    description: "Patient asks to book an appointment or asks about availability"
+    dispatch:
+      tool: handoff_human
+      params:
+        reason: "scheduling"
+        priority: "high"
+    examples:
+      - "cuándo puede verme"
+      - "agendar cita"
+      - "disponibilidad"
+      - "quiero reservar una consulta"
+      - "tienen cupo esta semana"
+      - "cómo agendo mi consulta"
+      - "reservar cita"
+      - "cuándo hay disponibilidad"
+      - "tienen cita disponible el lunes"
+      - "quiero agendar"
+      - "tienen cupo el lunes en la tarde"
+      - "cómo reservo un turno"
+
+  handoff_discount:
+    description: "Patient asks for a discount, promotion, or family pricing"
+    dispatch:
+      tool: handoff_human
+      params:
+        reason: "discount_negotiation"
+        priority: "normal"
+    examples:
+      - "tienen descuento"
+      - "hay alguna promoción"
+      - "plan familiar"
+      - "me hacen algún descuento"
+      - "tienen precio especial"
+      - "puedo pagar menos"
+      - "tienen promo"
+      - "descuento para familia"
+      - "precio especial para dos personas"
+      - "me pueden dar una rebaja"
+      - "alguna oferta"
+      - "si compro para dos hay descuento"
+
+  handoff_medical_advice:
+    description: "Patient asks for medical advice, describes symptoms, or asks what to take"
+    dispatch:
+      tool: handoff_human
+      params:
+        reason: "medical_advice"
+        priority: "high"
+    examples:
+      - "tengo dolor"
+      - "qué tomo para la gastritis"
+      - "me duele el estómago"
+      - "tengo síntomas digestivos"
+      - "qué puedo comer si tengo colitis"
+      - "tengo inflamación"
+      - "qué suplemento me recomiendas para el dolor"
+      - "me siento muy mal"
+      - "qué hago si tengo reflujo"
+      - "me duele mucho"
+      - "qué tomo para"
+      - "tengo dolor de estómago hace 3 días"
+
+  handoff_refund:
+    description: "Patient asks for a refund, billing dispute, or invoice"
+    dispatch:
+      tool: handoff_human
+      params:
+        reason: "refund_billing"
+        priority: "high"
+    examples:
+      - "quiero un reembolso"
+      - "factura"
+      - "disputa de pago"
+      - "cobro incorrecto"
+      - "no quedé satisfecha quiero el dinero de vuelta"
+      - "me cobraron mal"
+      - "factura de la consulta"
+      - "devolución de dinero"
+      - "quiero cancelar y que me devuelvan"
+      - "hay un error en el cobro"
+      - "no quedé satisfecha con mi consulta"
+      - "quiero la factura"
+
+  handoff_post_payment_logistics:
+    description: "Patient already paid and has a logistics issue (kit not arrived, access not granted)"
+    dispatch:
+      tool: handoff_human
+      params:
+        reason: "logistics"
+        priority: "high"
+    examples:
+      - "ya pagué dónde está"
+      - "mi kit no llega"
+      - "ya pagué y no he recibido nada"
+      - "cuándo me llega el kit"
+      - "pagué pero no recibí el acceso"
+      - "cómo activo mi plan después de pagar"
+      - "ya hice el pago y nada"
+      - "no recibí el link de la consulta"
+      - "mi kit de examen no ha llegado"
+      - "ya transferí el dinero"
+      - "ya pagué y no me ha llegado el kit del examen"
+      - "pagué y no tengo respuesta"
+
+  handoff_english:
+    description: "Patient writes in English"
+    dispatch:
+      tool: handoff_human
+      params:
+        reason: "english_language"
+        priority: "normal"
+    examples:
+      - "i need help"
+      - "do you speak english"
+      - "hello can you help me"
+      - "I want to know about your plans"
+      - "Hi, I want to schedule an appointment"
+      - "can you help me in english"
+
+  handoff_distress:
+    description: "Patient is in distress or abusive"
+    dispatch:
+      tool: handoff_human
+      params:
+        reason: "patient_distress"
+        priority: "urgent"
+    examples:
+      - "estoy muy desesperada"
+      - "ya no puedo más"
+      - "esto es una estafa"
+      - "me siento horrible y nadie me ayuda"
+      - "estoy al límite"
+
+  # ── Conversational — direct response, no tools ─────────────────────────────
+
+  greeting:
+    description: "Patient sends a greeting with no question"
+    dispatch:
+      tool: null
+      params: {}
+    examples:
+      - "hola"
+      - "buenos días"
+      - "buenas tardes"
+      - "buenas noches"
+      - "hey"
+      - "hola buen dia"
+      - "hola buenos días cómo están"
+      - "saludos"
+      - "hola que tal"
+      - "hola bienvenida"
+      - "buen día"
+      - "hola buenas"
+
+  farewell:
+    description: "Patient says goodbye or thank you at the end of the conversation"
+    dispatch:
+      tool: null
+      params: {}
+    examples:
+      - "gracias hasta luego"
+      - "adiós"
+      - "bye"
+      - "hasta pronto"
+      - "chao"
+      - "gracias por todo"
+      - "hasta la próxima"
+      - "muchas gracias"
+      - "chao chao"
+      - "quedo atenta, gracias"
+      - "nos vemos"
+      - "gracias y hasta luego"
+
+  acknowledgment:
+    description: "Patient sends a short acknowledgment with no follow-up question (end of exchange)"
+    dispatch:
+      tool: null
+      params: {}
+    examples:
+      - "ok"
+      - "gracias"
+      - "perfecto"
+      - "entendido"
+      - "de acuerdo"
+      - "listo"
+      - "claro"
+      - "okay"
+      - "bien"
+      - "dale"
+      - "👍"
+      - "recibido"
