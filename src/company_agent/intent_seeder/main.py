@@ -53,7 +53,8 @@ def sync_seeds(settings: IntentSeederSettings, *, reset: bool = False) -> None:
         for intent_class, intent_data in intents.items():
             examples: list[str] = intent_data.get("examples", [])
             dispatch: dict = intent_data.get("dispatch", {})
-            language = "en" if intent_class == "handoff_english" else "es"
+            language = "es"  # all seeds go into the 'es' bucket — the agent
+            # can't pre-know the patient's language at classify time
 
             if reset:
                 pass  # already cleared above

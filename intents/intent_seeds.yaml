@@ -293,6 +293,10 @@ intents:
       - "me pueden dar una rebaja"
       - "alguna oferta"
       - "si compro para dos hay descuento"
+      - "me hacen descuento si compro el Plan 3 y le pago a mi esposo el examen"
+      - "descuento si compro el plan 3 para dos personas"
+      - "precio especial si compro el Plan 5 también para mi esposo"
+      - "hay rebaja si contrato el Plan 3 para mi familia"
 
   handoff_medical_advice:
     description: "Patient asks for medical advice, describes symptoms, or asks what to take"
