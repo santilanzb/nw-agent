@@ -63,6 +63,7 @@ services:
     command: python -m company_agent.ingest_worker.main sync
     volumes:
       - ./knowledge:/app/knowledge
+      - ./intents:/app/intents
     depends_on:
       postgres:
         condition: service_healthy
