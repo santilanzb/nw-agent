@@ -72,6 +72,33 @@ export default definePluginEntry({
   register(api) {
     const { ragApiUrl, crmAdapterUrl, internalApiKey } = pluginConfig(api);
 
+    // ── Intent classifier (call FIRST after check_handoff_state) ────────────
+    api.registerTool(
+      {
+        name: "classify_intent",
+        description:
+          "OBLIGATORIA después de check_handoff_state y antes de cualquier otra acción. " +
+          "Clasifica el mensaje del paciente para decidir qué hacer. Devuelve un objeto con " +
+          "{intent, confidence, decision, dispatch}. " +
+          "Si decision='execute' y dispatch.tool tiene un nombre, llama EXACTAMENTE a esa tool con dispatch.params " +
+          "(fusionado con los parámetros que tú conozcas del contexto, como contact_phone). " +
+          "Si decision='clarify', pregunta al paciente para desambiguar (sugiere top_matches en tu pregunta). " +
+          "Si decision='fallback_llm', usa tu juicio con las reglas habituales.",
+        parameters: Type.Object({
+          message: Type.String({ minLength: 1 }),
+          language_hint: Type.Optional(Type.String()),
+        }),
+        async execute(_id, params) {
+          const result = await postJson(ragApiUrl, internalApiKey, "/v1/classify_intent", {
+            message: params.message,
+            language_hint: params.language_hint ?? "es",
+            top_k: 5,
+          });
+          return asText(result);
+        },
+      },
+    );
+
     // ── Knowledge retrieval ──────────────────────────────────────────────────
     api.registerTool(
       {

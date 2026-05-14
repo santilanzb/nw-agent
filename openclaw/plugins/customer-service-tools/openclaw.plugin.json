@@ -5,6 +5,7 @@
   "description": "Narrow business tools for retrieval and CRM-backed customer service workflows.",
   "contracts": {
     "tools": [
+      "classify_intent",
       "kb_search",
       "faq_location",
       "faq_services",
