@@ -18,7 +18,7 @@ function pluginConfig(api) {
   return {
     ragApiUrl: localHttpBaseUrl(config.ragApiUrl ?? DEFAULT_RAG_API_URL, "ragApiUrl"),
     crmAdapterUrl: localHttpBaseUrl(config.crmAdapterUrl ?? DEFAULT_CRM_ADAPTER_URL, "crmAdapterUrl"),
-    internalApiKey: config.internalApiKey ?? "",
+    internalApiKey: config.internalApiKey ?? process.env.INTERNAL_API_KEY ?? "",
   };
 }
 
