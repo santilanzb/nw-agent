@@ -115,7 +115,7 @@ class TicketDraftResponse(BaseModel):
 # ── Handoff ───────────────────────────────────────────────────────────────────
 
 class HandoffRequest(BaseModel):
-    conversation_id: str
+    conversation_id: str | None = None
     reason: str = Field(min_length=10, max_length=2000)
     priority: Priority = "high"
     customer_id: str | None = None      # Zoho Contact record id

@@ -280,7 +280,7 @@ class ZohoCrmAdapter(BaseCrmAdapter):
         if request.customer_id:
             title = f"[Handoff IA] {request.reason[:80]}"
             content = (
-                f"Conversación ID: {request.conversation_id}\n"
+                f"Conversación ID: {request.conversation_id or 'sin id'}\n"
                 f"Prioridad: {request.priority}\n\n"
                 f"Motivo:\n{request.reason}"
             )
