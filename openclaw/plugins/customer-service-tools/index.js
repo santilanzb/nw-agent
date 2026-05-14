@@ -65,6 +65,39 @@ function faqAnswer(topic, answer, sourceUri) {
   });
 }
 
+const DIRECT_FAQ_REPLIES = {
+  faq_location:
+    "¡Hola! NutriWhite está en Caracas, Venezuela 📍\n\n" +
+    "Nos encontramos en Alta Florida, Avenida Los Mangos, Centro Deportivo Caracas MultiSport, Piso 1.\n\n" +
+    "También ofrecemos consultas 100% online, así que puedes atenderte desde donde estés. ¿Te gustaría conocer nuestros planes?",
+
+  faq_services:
+    "En NutriWhite te ofrecemos todo lo que necesitas para mejorar tu salud de forma integral 🌿\n\n" +
+    "✅ Consultas de inmunonutrición y nutrición\n" +
+    "✅ Exámenes especializados\n" +
+    "✅ Suplementos específicos según tu caso y ubicación\n" +
+    "✅ Protocolo 3R de acompañamiento\n" +
+    "✅ Evaluación gratuita de salud\n" +
+    "✅ Llamada informativa gratis de 15 minutos\n\n" +
+    "Para suplementos fuera de Venezuela trabajamos con Fullscript y Wholescripts; en Venezuela lo coordina nuestro equipo de logística. ¿Quieres conocer nuestros planes de consulta?",
+
+  faq_consultation_plans:
+    "Tenemos tres planes diseñados para acompañarte en tu proceso 💙\n\n" +
+    "*Plan 1 — $229 USD (1 mes):*\n" +
+    "1 consulta de 90 min. Evaluación clínica-nutricional, plan de acción, plan de alimentación, guía del Protocolo 3R, recomendación de exámenes y suplementos.\n\n" +
+    "*Plan 3 — $559 USD (3 meses):*\n" +
+    "3 consultas. Todo lo anterior más acompañamiento de dos embajadoras, plan nutricional personalizado, emails semanales, 20+ recetas, 1 curso de la Academia y grupo de soporte por WhatsApp.\n\n" +
+    "*Plan 5 — $789 USD (5 meses):*\n" +
+    "5 consultas. Todo lo del Plan 3 más bootcamp de 10 días, todos los cursos de la Academia y acceso a webinars.\n\n" +
+    "Los exámenes son recomendados dentro del plan, no están incluidos en el precio. Las cuotas son solo con TDC y tienen 3% de comisión bancaria. ¿Quieres agendar tu llamada gratuita de 15 minutos?",
+
+  faq_payment_methods:
+    "Aceptamos varias formas de pago para tu comodidad 💳\n\n" +
+    "• PayPal\n• Zelle\n• Tarjeta de crédito (TDC)\n• Efectivo\n• Pago móvil (Venezuela)\n\n" +
+    "Las cuotas están disponibles solo con TDC y se añade un 3% de comisión bancaria.\n\n" +
+    "NutriWhite no trabaja directamente con seguros, pero podemos emitir factura para que gestiones el reembolso con tu corredor si tu seguro cubre nutrición. ¿Tienes alguna otra pregunta?",
+};
+
 export default definePluginEntry({
   id: "customer-service-tools",
   name: "Customer Service Tools",
