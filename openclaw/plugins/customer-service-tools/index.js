@@ -55,6 +55,19 @@ function asText(value) {
   };
 }
 
+async function postJsonWithRetry(baseUrl, internalApiKey, path, payload, retries = 1, backoffMs = 250) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await postJson(baseUrl, internalApiKey, path, payload);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < retries) await new Promise((r) => setTimeout(r, backoffMs));
+    }
+  }
+  throw lastErr;
+}
+
 function faqAnswer(topic, answer, sourceUri) {
   return asText({
     topic,
@@ -104,6 +117,80 @@ export default definePluginEntry({
   description: "NutriWhite tools for knowledge retrieval and Zoho-backed patient workflows.",
   register(api) {
     const { ragApiUrl, crmAdapterUrl, internalApiKey } = pluginConfig(api);
+
+    // ── Inbound claim hook: deterministic dispatch before LLM is invoked ────
+    api.registerHook("inbound_claim", async (event) => {
+      // Group messages are team commands — let LLM handle
+      if (event.isGroup) return { handled: false };
+
+      const phone = event.senderId;
+      if (!phone) return { handled: false };
+
+      // ── Step 1: Active handoff mute ──────────────────────────────────────
+      let handoffState;
+      try {
+        handoffState = await postJson(crmAdapterUrl, internalApiKey, "/v1/handoff/state/check", {
+          contact_phone: phone,
+        });
+      } catch {
+        return { handled: false }; // fail open — LLM will check on its turn
+      }
+      if (handoffState.active) return { handled: true }; // silent mute
+
+      // ── Step 2: Classify intent ──────────────────────────────────────────
+      let cls;
+      try {
+        cls = await postJson(ragApiUrl, internalApiKey, "/v1/classify_intent", {
+          message: event.content,
+          language_hint: "es",
+          top_k: 3,
+        });
+      } catch {
+        return { handled: false }; // fail open
+      }
+
+      // Only deterministically handle high-confidence executes
+      if (cls.decision !== "execute") return { handled: false };
+
+      const { intent, dispatch } = cls;
+
+      // ── Step 3a: Handoff triggers ────────────────────────────────────────
+      if (dispatch?.tool === "handoff_human") {
+        const handoffPayload = {
+          contact_phone: phone,
+          reason: dispatch.params?.reason ?? intent,
+          priority: dispatch.params?.priority ?? "high",
+          last_message: event.content,
+          patient_name: event.senderName ?? null,
+          conversation_id: event.conversationId ?? event.sessionKey ?? null,
+        };
+        try {
+          await postJsonWithRetry(crmAdapterUrl, internalApiKey, "/v1/handoff", handoffPayload);
+        } catch (err) {
+          // NOTE: /v1/handoff failed after one retry — mute row not written.
+          // The agent will answer on the next patient turn. The missed-reply
+          // watchdog (scripts/openclaw_pending_messages.py) should catch it.
+          console.error(`[nw-hook] /v1/handoff failed (phone=${phone}): ${err.message}`);
+        }
+
+        const phrase =
+          intent === "handoff_english"
+            ? "Let me connect you with a colleague who'll attend you in English 🩵"
+            : "Para esto te conecto con una asesora que te dara la mejor recomendacion segun tu caso 🩵 Un momento por favor.";
+
+        return { handled: true, reply: { text: phrase } };
+      }
+
+      // ── Step 3b: Direct FAQ ──────────────────────────────────────────────
+      const faqText = DIRECT_FAQ_REPLIES[intent];
+      if (faqText) return { handled: true, reply: { text: faqText } };
+
+      // ── Step 3c: Acknowledgment — silent end of turn ─────────────────────
+      if (intent === "acknowledgment") return { handled: true };
+
+      // ── Step 3d: Everything else — LLM composes ─────────────────────────
+      return { handled: false };
+    });
 
     // ── Intent classifier (call FIRST after check_handoff_state) ────────────
     api.registerTool(
