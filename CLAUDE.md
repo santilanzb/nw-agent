@@ -81,11 +81,23 @@ When changing agent behavior, update both — they reinforce each other but are 
 OpenClaw runs **on the Ubuntu host** (not in Compose) via `systemd` + Node 24. The plugin is installed locally:
 
 ```bash
-openclaw plugins install ./openclaw/plugins/customer-service-tools
-openclaw gateway restart
+# Use --force so the extensions/ copy picks up any updated index.js
+openclaw plugins install /root/nw-agent/openclaw/plugins/customer-service-tools --force
+systemctl --user restart openclaw-gateway.service
+
+# Verify the before_dispatch hook is registered in live Gateway memory:
+openclaw plugins inspect customer-service-tools --runtime --json | jq '.hooks // .runtimeHooks'
+# Expected: an entry naming "before_dispatch"
 ```
 
 The plugin expects `RAG_API_URL`, `CRM_ADAPTER_URL`, and `INTERNAL_API_KEY` in the OpenClaw host environment. Tool allow/deny policy is documented in [docs/openclaw-setup.md](docs/openclaw-setup.md) — start from `profile: minimal` and the explicit allowlist there. **Do not** expose `group:runtime`, `group:fs`, `browser`, `web_search`, or `web_fetch` to the customer-facing agent.
+
+The plugin's `before_dispatch` hook requires the `allowConversationAccess` permission flag in `~/.openclaw/openclaw.json`; without it, `event.content` is empty. Set it once on the droplet:
+
+```bash
+jq '.plugins.entries["customer-service-tools"].hooks = { allowConversationAccess: true }'   ~/.openclaw/openclaw.json > /tmp/oc.json   && mv /tmp/oc.json ~/.openclaw/openclaw.json
+chmod 600 ~/.openclaw/openclaw.json
+```
 
 The [openclaw/hooks/nw-message-journal](openclaw/hooks/nw-message-journal/) hook appends every `message:received` / `message:sent` event to `/root/nw-agent/runtime/openclaw-message-journal.jsonl` so [scripts/openclaw_pending_messages.py](scripts/openclaw_pending_messages.py) can flag missed replies.
 
