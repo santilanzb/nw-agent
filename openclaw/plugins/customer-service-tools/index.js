@@ -119,12 +119,14 @@ export default definePluginEntry({
     console.log("[customer-service-tools] register() called");
     const { ragApiUrl, crmAdapterUrl, internalApiKey } = pluginConfig(api);
 
-    // ── Inbound claim hook: deterministic dispatch before LLM is invoked ────
-    // NOTE: Use api.on() for typed plugin hooks like inbound_claim. The
-    // generic api.registerHook() targets internal hooks and silently fails
-    // to load plugin-hook names, which prevented this plugin from loading
-    // at all in OpenClaw v2026.5.7.
-    api.on("inbound_claim", async (event) => {
+    // ── Before-dispatch hook: deterministic dispatch before LLM is invoked ────
+    // before_dispatch (not inbound_claim) is the correct hook for non-capability
+    // tool plugins on WhatsApp DMs. inbound_claim only fires for conversations
+    // explicitly bound to a plugin (sub-agent sessions) and is silently skipped
+    // for regular WhatsApp DMs — which is why that hook never fired.
+    api.on("before_dispatch", async (event, ctx) => {
+      // Only gate WhatsApp — let other channels (voice, etc.) pass through to LLM
+      if (event.channel !== "whatsapp") return { handled: false };
       // Group messages are team commands — let LLM handle
       if (event.isGroup) return { handled: false };
 
@@ -167,7 +169,7 @@ export default definePluginEntry({
           priority: dispatch.params?.priority ?? "high",
           last_message: event.content,
           patient_name: event.senderName ?? null,
-          conversation_id: event.conversationId ?? event.sessionKey ?? null,
+          conversation_id: ctx.conversationId ?? event.sessionKey ?? ctx.sessionKey ?? null,
         };
         try {
           await postJsonWithRetry(crmAdapterUrl, internalApiKey, "/v1/handoff", handoffPayload);
@@ -183,12 +185,12 @@ export default definePluginEntry({
             ? "Let me connect you with a colleague who'll attend you in English 🩵"
             : "Para esto te conecto con una asesora que te dara la mejor recomendacion segun tu caso 🩵 Un momento por favor.";
 
-        return { handled: true, reply: { text: phrase } };
+        return { handled: true, text: phrase };
       }
 
       // ── Step 3b: Direct FAQ ──────────────────────────────────────────────
       const faqText = DIRECT_FAQ_REPLIES[intent];
-      if (faqText) return { handled: true, reply: { text: faqText } };
+      if (faqText) return { handled: true, text: faqText };
 
       // ── Step 3c: Acknowledgment — silent end of turn ─────────────────────
       if (intent === "acknowledgment") return { handled: true };
