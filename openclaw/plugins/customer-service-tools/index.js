@@ -340,24 +340,15 @@ export default definePluginEntry({
     );
 
     // ── Consultas ─────────────────────────────────────────────────────────────
-    api.registerTool(
-      {
-        name: "customer_tickets",
-        description: "Listar consultas programadas y vistas del paciente.",
-        parameters: Type.Object({
-          customer_id: Type.String(),
-        }),
-        async execute(_id, params) {
-          const result = await postJson(crmAdapterUrl, internalApiKey, "/v1/customer/tickets", params);
-          return asText(result);
-        },
-      },
-    );
-
+    // NOTE: previously registered an alias `customer_tickets` calling
+    // /v1/customer/tickets. Both crm-adapter endpoints still exist and return
+    // the same data, but the alias triggered a "plugin must declare contracts.tools"
+    // diagnostic because the manifest only lists `customer_consultas`. Dropped
+    // the alias — agents and intent seeds reference customer_consultas.
     api.registerTool(
       {
         name: "customer_consultas",
-        description: "Alias claro de customer_tickets — consultas del paciente.",
+        description: "Listar consultas programadas y vistas del paciente.",
         parameters: Type.Object({
           customer_id: Type.String(),
         }),
