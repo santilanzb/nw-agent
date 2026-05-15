@@ -181,6 +181,43 @@ One or two commits is fine:
 
 Run lint + tests before each commit.
 
+### Step 7 — Tighten group-side inbound policy (operator allowlist)
+
+The bot pushing to the team group is one direction. The other direction — operators in the group typing `@Gutty tomo +58...` to claim a case — is gated by `channels.whatsapp.groups`. Without restrictions, anyone the team accidentally adds to the group could issue claim/resume commands.
+
+Update `~/.openclaw/openclaw.json` so the Gutty Agent group is scoped to the three operator phones AND requires the @-mention:
+
+```bash
+# Replace <GROUP_JID> with the actual JID captured in Step 2
+# Replace the three numbers with the team's operator phones (these are in docs/intent-router-plan.md)
+jq '.channels.whatsapp.groups = {
+  "<GROUP_JID>": {
+    "requireMention": true,
+    "allowFrom": ["+584149253088", "+584128574606", "+584241896377"]
+  }
+}' ~/.openclaw/openclaw.json > /tmp/oc.json && mv /tmp/oc.json ~/.openclaw/openclaw.json
+chmod 600 ~/.openclaw/openclaw.json
+```
+
+This replaces the existing wildcard `groups."*"` config with a JID-scoped rule. The wildcard would have applied to ANY group the bot is in; the new rule only governs the Gutty Agent group. If the bot needs to behave in other groups later, add their JIDs as additional keys.
+
+Verify after restart:
+
+```bash
+jq '.channels.whatsapp.groups' ~/.openclaw/openclaw.json
+```
+
+And confirm in a test: from a phone NOT in the operator allowlist (e.g. your own test phone), join the Gutty Agent group and try `@Gutty tomo +584145610594`. Should be silently dropped. From an operator phone, the same command should claim.
+
+### Step 8 — Production DM policy considerations (document, do not change yet)
+
+The current `dmPolicy: "allowlist"` with just `+584241329676` is a single-tester setup. Real patient rollout will need either:
+
+- **`dmPolicy: "open"` + `allowFrom: ["*"]`** — any phone can DM the bot. Recommended for a customer-service bot since you can't enumerate future patients. The `before_dispatch` hook + classifier becomes the only line of defense; that's fine because it's deterministic.
+- **Stay on allowlist and grow it.** Operationally painful as patients sign up daily; not recommended.
+
+Do not change this in Phase 3. Just document the decision in CLAUDE.md / docs so the operator knows the switch is required before opening the bot to real traffic. Add this to the architecture-diagrams.md "Triage" / "Operational hardening" section as a 🔴 → 🟢 follow-up.
+
 ## Constraints
 
 - **Do not modify** the intent classifier, seeds, crm-adapter, rag-api, Postgres schema, or `handoff_state` table.
