@@ -5,6 +5,16 @@
 > **Authoring session:** Opus 4.7, planning only, 2026-05-15. No code was written in this session.
 >
 > **Scope:** the plan covers Phases 1–4 of the NutriWhite Brain pivot. Phase 5+ (additional task modules) is sketched but not specified.
+>
+> **§11 open decisions — RESOLVED 2026-05-15:**
+> 1. Composition model: **Haiku 4.5 default + Sonnet 4.6 escalation** (Option A).
+> 2. WAHA hosting: **same droplet, NOWEB engine** (Option A).
+> 3. Langfuse: **ship in Phase 1 alongside agent-core** (Option B — earlier than the original plan recommendation).
+> 4. Episodic retention: **90d raw / 365d summaries / facts indefinite-but-pruned-at-18mo-dormancy** (planner-recommended refinement of the default).
+> 5. Self-learning gate: **auto-apply with eval-regression rollback** (Option B — real self-learning, not human-approval).
+> 6. Graph storage: **single Postgres with AGE + pgvector (Option A), pre-authorized fallback to a separate `pg-graph` Postgres (Option B) if Day-1 cohabitation smoke fails.** Run the smoke test first; if it passes, ship A; if it fails, switch to B without stopping.
+>
+> Section §11 below retains the full reasoning for each fork; the bullets above are the binding answers.
 
 ---
 
@@ -237,11 +247,31 @@ Append to `docker-compose.yml`:
       waha:
         condition: service_healthy
 
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: nw-langfuse
+    restart: unless-stopped
+    ports:
+      - "3001:3000"           # Langfuse UI (proxy behind Caddy in prod)
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${LANGFUSE_DATABASE_URL:-postgresql://agent:agent@postgres:5432/langfuse}
+      NEXTAUTH_URL: ${LANGFUSE_PUBLIC_URL:-http://127.0.0.1:3001}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET}
+      SALT: ${LANGFUSE_SALT}
+      TELEMETRY_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   waha_sessions:
   waha_files:
 ```
+
+The `langfuse` database is a separate logical DB inside the same Postgres instance — created by a one-shot psql on first deploy: `CREATE DATABASE langfuse OWNER agent;`. Langfuse manages its own schema via Prisma migrations on startup.
 
 ### `.env.example` additions
 
@@ -258,6 +288,14 @@ ANTHROPIC_ESCALATION_MODEL=claude-sonnet-4-6
 
 # Team push
 HANDOFF_TEAM_GROUP_JID=<discovered from WAHA, e.g. 120363...@g.us>
+
+# Langfuse (Phase 1)
+LANGFUSE_DATABASE_URL=postgresql://agent:agent@postgres:5432/langfuse
+LANGFUSE_PUBLIC_URL=https://traces.<your-domain>
+LANGFUSE_NEXTAUTH_SECRET=<generate: openssl rand -base64 32>
+LANGFUSE_SALT=<generate: openssl rand -base64 32>
+LANGFUSE_PUBLIC_KEY=<set after first Langfuse admin login>
+LANGFUSE_SECRET_KEY=<set after first Langfuse admin login>
 ```
 
 ### Pairing flow
@@ -478,7 +516,7 @@ The actual `messages.create` calls live in `llm/anthropic.py` and are thin. The 
 
 Phone numbers are PII and are written to `turn_log` (the DB table) but not to stdout logs. Phone-keyed analytics happen via the DB; log search goes via `turn_id`.
 
-**Phase 4 (recommended):** Langfuse self-hosted via Docker Compose, integrated through Anthropic's SDK callback hook. Captures full prompt + completion + tool calls per LLM-using turn. Lets us replay and diff prompts when a composition regresses. See §11 open decision.
+**Phase 1 (resolved §11.3):** Langfuse self-hosted via Docker Compose, integrated through the Anthropic SDK. Captures full prompt + completion + tool calls per LLM-using turn. Lets us replay and diff prompts when a composition regresses. Phase 1 ships agent-core with Langfuse tracing enabled out of the gate — one more Compose service to keep alive during cutover, accepted as the cost of having traces from turn #1.
 
 ---
 
@@ -771,7 +809,7 @@ Insert the summary into `episode_summaries`. The raw turns stay for 90 days then
 |---|---|---|---|
 | `patient_episodes` (raw turns) | 90 days, then hard-deleted by cron | Yes — `DELETE WHERE contact_phone = $1` | See below |
 | `episode_summaries` | 365 days, then hard-deleted | Yes | See below |
-| `patient_facts` | Indefinite while patient is active; cleared on request | Yes | See below |
+| `patient_facts` | Indefinite while patient active; **pruned automatically when no inbound turn from the phone for 18 months**; cleared on request | Yes | See below |
 | `turn_log` (analytics, see §6) | 365 days; phone is hashed | Yes — replace hash with `tombstone` marker | See below |
 
 **At-rest encryption:** as long as Postgres lives on the droplet's local disk, encryption-at-rest depends on the droplet's disk encryption (DigitalOcean's standard for new volumes). When migrating to DO Managed PostgreSQL (planned per `MEMORY.md` infra notes), DO provides encryption at rest by default. No app-layer field encryption is added — overkill at this volume and would complicate vector queries. Phone numbers in stdout logs are SHA256-hashed; the DB still holds the raw phone (it has to, in order to match WhatsApp inbound).
@@ -867,13 +905,16 @@ CREATE TABLE IF NOT EXISTS learning_queue (
 );
 ```
 
-**Approval gate:** `learning_queue` items are NOT auto-applied. A human approves them (initially in Markdown review files, later through a small admin page if needed). When approved, an `apply` step runs:
+**Auto-apply with eval-regression rollback (resolved §11.5):** `learning_queue` items in `reseed` and `new_condition` kinds **auto-apply** when their confidence threshold is met. A human is not in the loop on the happy path — they review the weekly Markdown to audit, not to gate. The apply flow:
 
-- `reseed` → write to `intents/intent_seeds.yaml`, re-run `python -m company_agent.intent_seeder.main sync`, then re-run the eval harness. If the eval regresses by >2%, roll back the seed addition automatically and mark the queue row `rejected`.
-- `new_intent` → same plus a new dispatch rule in the task module (manual code change required).
-- `new_condition` → write a `Condition {name: ..., status: 'pending_review'}` node into the graph plus a curated `RECOMMENDED_FOR` / `SPECIALIZES_IN` edge set.
+- `reseed` → triggers when a cluster of misclassified inputs reaches `cluster_size ≥ 8` AND the dominant-intent confidence in the cluster is `≥ 0.70` (Haiku-judged). The seed phrases are appended to `intents/intent_seeds.yaml`, `intent_seeder.main sync` runs, then the eval harness runs. **If the eval pass-rate regresses by >2% vs the prior baseline, the seed addition is automatically reverted** (git revert on the yaml file via `python -m company_agent.learning_review.main rollback`), the `learning_queue` row is marked `rejected`, and an alert is logged. The reviewer is paged via a row in `learning_alerts` (new small table — phone number, ts, reason) so they can investigate.
+- `new_condition` → triggers when an entity-extraction step (Haiku, `tool_choice=extract_condition`) returns the same proposed condition name from ≥ 3 distinct patient turns within 14 days. The node is written with `status: 'auto_applied'` and a curated `SPECIALIZES_IN` edge set is left empty for human curation in the weekly review. Reviewer can demote (`status: 'rejected'` → `DETACH DELETE` the node).
+- `new_intent` → still **manual.** Adding a brand-new intent class requires a dispatch decision in `CustomerServiceTask` and is a code change. Queued items of this kind stay `pending` until a human applies them.
+- `prompt_fix` → still **manual.** Same reasoning.
 
-See §11 open decision on whether to keep the human-approval gate or move to auto-apply after a confidence threshold is reached.
+**Safety floor.** Auto-apply is rate-limited: at most 3 `reseed` applies and 5 `new_condition` applies per 24-hour window across the whole tenant. Beyond that, additional items queue as `pending` and require human apply. This prevents a runaway feedback loop (e.g. a flood of similar misclassifications triggering a cascade of seed adds).
+
+**Reviewer override.** The weekly Markdown still surfaces every applied item. The reviewer can mark any applied row `revert_requested` in the queue, which schedules a rollback on the next nightly run. Auto-apply is fast-forward; the human gets undo, not approval.
 
 ### The first three "wins" we should be able to demonstrate
 
@@ -1105,12 +1146,13 @@ All targets are working-day estimates assuming one engineer (or one focused buil
 **Scope:**
 - WAHA Compose service running, paired with a test number.
 - `agent-core` service deployed, listening on `:8083`.
+- **Langfuse self-hosted via Compose** (per §11.3 — decision resolved to ship in Phase 1). Anthropic calls from agent-core emit traces with `turn_id` as the trace id.
 - The state machine described in §3 implemented for: `handoff mute`, `classify_intent`, deterministic dispatch (FAQ, handoff, acknowledgment), and LLM fallback for the rest.
 - `CustomerServiceTask` registered as the sole task.
 - `turn_log` table + writing on every turn.
 - Team-group push on handoff fire (the Phase 3 OpenClaw effort completed).
 - WAHA → agent-core HMAC verification working.
-- All smoke tests in §9 Stage 2 passing on the test number.
+- All smoke tests in §9 Stage 2 passing on the test number, **and each one's LLM-using turns appearing as a Langfuse trace.**
 
 **Acceptance:** the test number, sent the same six messages as the §9 Stage 2 smoke test, produces identical patient-facing behavior to today's OpenClaw stack PLUS a team-group push notification — and `turn_log` has one row per turn with the correct fields populated.
 
@@ -1148,7 +1190,7 @@ All targets are working-day estimates assuming one engineer (or one focused buil
 - Markdown review files generated to `learning_review/queue/YYYY-WW.md`.
 - Apply flow (`python -m company_agent.learning_review.main apply --id <queue_id>`) implemented for `reseed`, `new_condition`. (`new_intent` and `prompt_fix` remain manual code changes — explicitly NOT automated.)
 - Implicit-feedback follow-up tracking (`turn_log.follow_up_within_minutes`) running.
-- Langfuse self-hosted (decision pending, §11). If we ship Langfuse, the agent-core's Anthropic calls emit traces.
+- Langfuse traces (shipped in Phase 1 per §11.3) used here for review-cluster diagnostics — the reviewer can click through to the original LLM call from a Markdown review entry.
 
 **Acceptance:** at least one of each of the three concrete wins (§6) has been produced from the live production traffic, with a paper trail of `turn_log` rows → review file → `learning_queue` row → applied change → post-apply eval pass.
 
@@ -1159,6 +1201,8 @@ Sketched in §7; not built in the build session this plan kicks off.
 ---
 
 ## 11. Open decisions for the user (these gate the build)
+
+**All six are resolved — see the binding answers in the document header (§0 banner). Section retained for reasoning.**
 
 Each item is a real fork. The build session needs answers before kickoff.
 
