@@ -180,6 +180,29 @@ export default definePluginEntry({
           console.error(`[nw-hook] /v1/handoff failed (phone=${phone}): ${err.message}`);
         }
 
+        // ── Best-effort team-group push ────────────────────────────────────
+        // Patient reply goes out regardless of whether this succeeds.
+        try {
+          const teamJid =
+            process.env.HANDOFF_TEAM_GROUP_JID ??
+            api.pluginConfig?.handoffTeamGroupJid;
+          if (teamJid) {
+            const senderLabel = event.senderName ?? phone;
+            const notif =
+              `🚨 *Handoff* — ${senderLabel}\n` +
+              `📱 ${phone}\n` +
+              `Motivo: ${dispatch.params?.reason ?? intent}\n` +
+              `Última pregunta: "${event.content}"\n\n` +
+              `Quien toma el caso, responde "TOMO" en este grupo.`;
+            const adapter = await api.runtime.channel.outbound.loadAdapter("whatsapp");
+            if (adapter?.sendText) {
+              await adapter.sendText({ cfg: api.config, to: teamJid, text: notif });
+            }
+          }
+        } catch (err) {
+          console.error(`[nw-hook] team-group push failed: ${err.message}`);
+        }
+
         const phrase =
           intent === "handoff_english"
             ? "Let me connect you with a colleague who'll attend you in English 🩵"

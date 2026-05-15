@@ -43,6 +43,10 @@
       "internalApiKey": {
         "type": "string",
         "minLength": 1
+      },
+      "handoffTeamGroupJid": {
+        "type": "string",
+        "description": "WhatsApp JID of the 'Gutty Agent' team group (format: 120363...@g.us). Capture by having the team post once in the group and reading the chatId from the gateway log or message journal."
       }
     }
   }
