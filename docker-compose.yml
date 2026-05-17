@@ -100,7 +100,7 @@ services:
       WAHA_LOG_LEVEL: info
       TZ: America/Caracas
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/ping"]
+      test: ["CMD", "wget", "-qO-", "--header", "X-Api-Key: ${WAHA_API_KEY}", "http://127.0.0.1:3000/api/ping"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -134,7 +134,7 @@ services:
       crm-adapter:
         condition: service_started
       waha:
-        condition: service_healthy
+        condition: service_started
 
   langfuse:
     image: langfuse/langfuse:2
