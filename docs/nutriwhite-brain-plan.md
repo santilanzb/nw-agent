@@ -202,7 +202,7 @@ Append to `docker-compose.yml`:
       WHATSAPP_HOOK_RETRIES_POLICY: linear
       WHATSAPP_HOOK_RETRIES_DELAY_SECONDS: 2
       WHATSAPP_HOOK_RETRIES_ATTEMPTS: 4
-      WAHA_API_KEY_PLAIN: ${WAHA_API_KEY}
+      WAHA_API_KEY: ${WAHA_API_KEY}        # NOTE: use WAHA_API_KEY, not WAHA_API_KEY_PLAIN
       WAHA_DASHBOARD_USERNAME: admin
       WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD}
       WHATSAPP_SWAGGER_ENABLED: "true"
@@ -211,7 +211,9 @@ Append to `docker-compose.yml`:
       WAHA_LOG_LEVEL: info
       TZ: America/Caracas
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/ping"]
+      # /api/ping does not exist in WAHA Core — use /api/sessions (200 when authenticated + running)
+      # CMD-SHELL is required so $WAHA_API_KEY expands inside the container environment
+      test: ["CMD-SHELL", "wget -qO- --header \"X-Api-Key: $WAHA_API_KEY\" http://127.0.0.1:3000/api/sessions"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -245,7 +247,8 @@ Append to `docker-compose.yml`:
       crm-adapter:
         condition: service_started
       waha:
-        condition: service_healthy
+        condition: service_started   # NOTE: service_started not service_healthy — WAHA healthcheck
+                                     # is authenticated; agent-core starts fine once WAHA is up
 
   langfuse:
     image: langfuse/langfuse:2
@@ -302,12 +305,13 @@ LANGFUSE_SECRET_KEY=<set after first Langfuse admin login>
 
 WAHA pairing is done **once** via the Dashboard at `http://<droplet>:3000` (proxied behind Caddy with basic auth in production):
 
-1. Open the dashboard, log in with `WAHA_DASHBOARD_USERNAME` / `_PASSWORD`.
-2. Create a session named `default`.
-3. Start the session → status flips `STOPPED → SCAN_QR`.
-4. Click the camera icon → QR code rendered.
-5. On the Gutty phone (`+58 412 325 1172`), open WhatsApp → Linked Devices → Link a device → scan.
-6. Status flips `SCAN_QR → WORKING`. WAHA persists auth in `/app/.sessions` (Docker volume `waha_sessions`).
+1. Open the dashboard at `http://<droplet>:3000/dashboard`, log in with `WAHA_DASHBOARD_USERNAME` / `WAHA_DASHBOARD_PASSWORD`.
+2. The `default` session is created automatically via `WHATSAPP_RESTART_ALL_SESSIONS=True`. If not visible, POST to `/api/sessions` with `{"name":"default"}`.
+3. Start the session via the dashboard or `POST /api/sessions/default/start` — status flips `STOPPED → SCAN_QR_CODE`.
+4. Open WhatsApp on the target phone → Linked Devices → Link a device → scan the QR.
+5. Status flips `SCAN_QR_CODE → WORKING`. WAHA persists auth in `/app/.sessions` (Docker volume `waha_sessions`).
+
+**Phase 1:** pair with a **TEST phone** — do NOT use the production Gutty number (`+58 412 325 1172`) until Stage 3 cutover.
 
 The session survives container restarts as long as the `waha_sessions` volume is intact. If the volume is wiped, re-pair from scratch.
 
@@ -367,6 +371,26 @@ WhatsApp allows **up to 5 linked devices** per phone. The migration path that av
 **Risk:** during the 5–15 min downtime, incoming patient messages are received by the Gutty phone but not seen by any agent. WhatsApp's "Online" indicator will be off — patients sending during the window will see no read receipt. Mitigation: announce the maintenance window in the team group; pick a low-traffic time (early morning Caracas time).
 
 There is no clean way to migrate Linked Devices state. Pairing creates a fresh session; in-flight messages are not transferred to the new device pairing. Active conversations are not broken — they continue once WAHA pairs.
+
+### Phase 1 deployment notes (2026-05-18)
+
+All Phase 1 infrastructure is deployed and running on `165.227.73.90`. Discovered quirks during deployment:
+
+**WAHA API key env var:**
+`WAHA_API_KEY_PLAIN` is silently ignored by current WAHA versions. WAHA generates and logs a new key on every start if its own `WAHA_API_KEY` env var is not set. The correct variable is `WAHA_API_KEY`. The docker-compose snippet above has been corrected.
+
+**WAHA healthcheck endpoint:**
+`/api/ping` returns 404 in WAHA Core. Use `GET /api/sessions` (returns `[]` with 200 when authenticated and running). `CMD-SHELL` form is required so shell expands `$WAHA_API_KEY` inside the container.
+
+**Langfuse account bootstrap:**
+Self-hosted Langfuse v2 has no public signup API. Initial admin user, org, project, and API keys must be inserted directly into the `langfuse` Postgres database. Key detail: `hashed_secret_key` in the `api_keys` table must be a **bcrypt hash** of the secret key (not SHA-256); `fast_hashed_secret_key` is SHA-256. See `sql/000_create_databases.sh` for the langfuse DB creation step.
+
+**Current Phase 1 status:**
+- ✅ `postgres` (healthy), `rag-api`, `crm-adapter` — up
+- ✅ `waha` (healthy) — API key auth working, session created
+- ✅ `agent-core` (`:8083`) — `/health` returns `{"status":"ok"}`
+- ✅ `langfuse` (`:3001`) — API keys verified
+- 🔴 **WAHA QR scan pending** — must pair a TEST phone before smoke tests can run
 
 ---
 

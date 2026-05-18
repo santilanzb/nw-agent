@@ -1,6 +1,8 @@
 # NutriWhite Agent — Architecture Diagrams
 
-Visual reference for the Gutty WhatsApp agent stack. Renders inline in GitHub. Each diagram is followed by a "what this reveals" commentary so you can spot weak spots and future upgrades.
+Visual reference for the Gutty WhatsApp agent stack. Renders inline in GitHub.
+
+> **⚠️ Pivot in progress (2026-05-18):** The diagrams below show the **OpenClaw** architecture (current production). The **NutriWhite Brain** architecture — WAHA + agent-core replacing OpenClaw — is deployed in parallel and described in `docs/nutriwhite-brain-plan.md`. These diagrams remain valid until Stage 3 cutover. After cutover, the OpenClaw subgraph is replaced by WAHA (`:3000`) + agent-core (`:8083`) + Langfuse (`:3001`).
 
 Last reviewed: 2026-05-14, after Phase 1 (intent router) shipped and Phase 2 (deterministic inbound_claim hook) planned.
 

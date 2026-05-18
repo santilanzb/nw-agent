@@ -4,13 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A production-safe scaffold for **NutriWhite's WhatsApp customer service agent** ("Gutty"). The agent runtime lives on an Ubuntu host as **OpenClaw**; this repo is the **business backend** plus the **OpenClaw plugin** that gives the agent its narrow tool surface. The design intentionally keeps company knowledge, customer state, and tool policy in three separable services so each can be hardened independently.
+A production-safe scaffold for **NutriWhite's WhatsApp customer service agent** ("Gutty"). The stack is in active transition:
+
+- **Pre-cutover (current):** agent runtime is **OpenClaw** (systemd + Node 24 on the Ubuntu host). The backend services (`rag-api`, `crm-adapter`, Postgres) are live and unchanged.
+- **Post-cutover (imminent):** transport moves to **WAHA** (Docker) and orchestration moves to **agent-core** (FastAPI + hand-written FSM, port 8083). Both are already deployed on the droplet running alongside OpenClaw. Cutover is Stage 3 of §9 in `docs/nutriwhite-brain-plan.md`.
+
+The design intentionally keeps company knowledge, customer state, and tool policy in three separable services so each can be hardened independently.
 
 ## Common commands
 
 ```bash
 # Local stack (Postgres + RAG API + CRM adapter)
 docker compose up --build postgres rag-api crm-adapter
+
+# Full Brain stack (all services including WAHA, agent-core, Langfuse)
+docker compose up -d
 
 # Ingest knowledge from knowledge/raw/ into Postgres (one-shot)
 docker compose run --rm ingest-worker python -m company_agent.ingest_worker.main sync
@@ -29,9 +37,10 @@ python -m eval.run_eval --models haiku-4.5
 python -m eval.run_eval --models haiku-4.5,gemini-3-flash,gpt-5-mini
 
 # Smoke tests (read .env from project root automatically)
-python scripts/zoho_smoke_test.py     # verifies Zoho OAuth + COQL against sandbox
-python scripts/model_smoke_test.py    # sends "Hola" to each model
+python scripts/zoho_smoke_test.py          # verifies Zoho OAuth + COQL against sandbox
+python scripts/model_smoke_test.py         # sends "Hola" to each model
 python scripts/openclaw_pending_messages.py   # scans the message journal for unanswered WhatsApp messages
+python scripts/smoke_test_phase1.py        # Phase 1 Brain smoke test — 6 turns against agent-core webhook
 ```
 
 ## Architecture: the three-service split
@@ -75,6 +84,72 @@ When changing agent behavior, update both — they reinforce each other but are 
 ## Postgres schema is bootstrapped, not migrated
 
 [sql/001_init.sql](sql/001_init.sql) runs once via `docker-entrypoint-initdb.d/`. No migration tool. Schema changes for production require manual coordination. Indexes: GIN on `search_tsv` for FTS, HNSW (cosine) on the 1536-dim `embedding` column. The chunk's `search_tsv` is a `GENERATED ALWAYS AS` column — do not insert into it.
+
+## NutriWhite Brain (agent-core) — deployed, pre-cutover
+
+The Brain is the replacement for OpenClaw orchestration. All services are deployed and running on the droplet (`165.227.73.90`). Full design in `docs/nutriwhite-brain-plan.md`.
+
+### New services (all in docker-compose.yml)
+
+| Service | Container | Port | Notes |
+|---|---|---|---|
+| `waha` | `nw-waha` | 3000 | WhatsApp transport. NOWEB engine. Healthcheck uses `GET /api/sessions`. |
+| `agent-core` | `nw-agent-core` | 8083 | FastAPI FSM. `/webhooks/waha`, `/health`, `/admin/*`. |
+| `langfuse` | `nw-langfuse` | 3001 | Self-hosted traces. Dashboard: `http://165.227.73.90:3001`. |
+
+### agent-core layout
+
+```
+src/company_agent/agent_core/
+  main.py           # FastAPI: /webhooks/waha (HMAC-verified), /health
+  config.py         # AgentCoreSettings (all from .env)
+  fsm.py            # TurnFSM: dedup → group/DM branch → classify → task → side-effects → send
+  models.py         # WahaInboundMessage, TurnContext, TaskResult, ClassificationResult, HandoffArgs
+  transport/
+    waha.py         # WahaClient.send_text(), normalize_waha_event(), dm_jid()
+    hmac_verify.py  # verify_waha_hmac() — SHA-512, used on every inbound webhook
+  routing/
+    classifier_client.py  # POST /v1/classify_intent → ClassificationResult
+    handoff_client.py     # check_active, create_handoff, resume, claim
+  tasks/
+    base.py               # TaskModule Protocol + TaskRegistry
+    customer_service.py   # CustomerServiceTask: deterministic FAQ, handoff, LLM fallback
+  brain/
+    turn_log.py           # TurnLogWriter — async write to turn_log table (phone SHA-256 hashed)
+  llm/
+    anthropic.py          # LLMClient with Langfuse tracing (trace_id = turn_id)
+    composition.py        # Spanish system prompts + prompt builders
+```
+
+### Key implementation notes
+
+- **WAHA API key env var:** use `WAHA_API_KEY` (not `WAHA_API_KEY_PLAIN`). The latter is ignored by current WAHA versions.
+- **WAHA healthcheck endpoint:** `/api/ping` does not exist in WAHA Core. Use `GET /api/sessions`.
+- **Langfuse account setup:** no web signup API in self-hosted v2. Account + org + project + API keys must be inserted directly into the `langfuse` Postgres DB (see `docs/nutriwhite-brain-plan.md` §Phase 1 deployment notes).
+- **Langfuse credentials:** project `agent-core`, public key `pk-lf-FDYPt8YUi2j5_NKRTWHRg83bTBA`, secret key in `.env` as `LANGFUSE_SECRET_KEY`.
+- **WAHA QR scan required:** WAHA must be paired with a WhatsApp number via the dashboard (`http://165.227.73.90:3000/dashboard`) before it can send/receive messages. Use a TEST phone for Phase 1; do NOT use the production Gutty number until Stage 3 cutover.
+- **Group commands:** the FSM responds to `@Gutty tomo +phone` and `@Gutty resume +phone` in the team group (JID set via `HANDOFF_TEAM_GROUP_JID` in `.env`).
+
+### New tables (sql/004_brain.sql — applied to prod)
+
+- `turn_log` — every turn; phone SHA-256 hashed; review fields for self-learning (Phase 4)
+- `patient_episodes`, `episode_summaries`, `patient_facts` — episodic memory stubs (Phase 3)
+- `learning_queue` — self-learning review queue (Phase 4)
+
+### .env additions for the Brain
+
+```bash
+WAHA_API_KEY=<hex32>                    # passed to container as WAHA_API_KEY
+WAHA_HOOK_HMAC_KEY=<hex32>             # HMAC-SHA512 signing key
+WAHA_DASHBOARD_PASSWORD=<string>
+ANTHROPIC_API_KEY=<existing>
+HANDOFF_TEAM_GROUP_JID=<jid>@g.us      # set after WAHA pairing
+LANGFUSE_PUBLIC_KEY=pk-lf-FDYPt8YUi2j5_NKRTWHRg83bTBA
+LANGFUSE_SECRET_KEY=sk-lf-...          # set in droplet .env
+LANGFUSE_HOST=http://langfuse:3000
+LANGFUSE_NEXTAUTH_SECRET=<base64-32>
+LANGFUSE_SALT=<base64-32>
+```
 
 ## OpenClaw deployment posture
 
