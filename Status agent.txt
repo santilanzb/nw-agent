@@ -1,0 +1,46 @@
+Yes — here's what a fresh agent gets from the repo right now:
+
+  From CLAUDE.md:
+  - Current transition state (OpenClaw still running, Brain deployed in parallel)
+  - Every new service, port, container name
+  - agent-core full file layout
+  - All WAHA/Langfuse quirks discovered during deployment
+  - New .env vars and their values/locations
+  - The smoke_test_phase1.py command to finish Phase 1
+
+  From docs/nutriwhite-brain-plan.md:
+  - Full architecture + rationale (§1–13)
+  - Corrected docker-compose snippet (with the fixes we made)
+  - Phase 1 deployment notes block with ✅/🔴 current status
+  - The exact 6 smoke tests that need to pass
+  - The cutover plan (Stage 3 = pair production number)
+
+  What it can't know from docs alone:
+  - The .env values on the droplet (by design — no secrets in docs)
+  - The Langfuse login password (NWBrain2026! for admin@nutriwhite.local) — that was never written down anywhere in the
+  repo
+
+  One honest gap: docs/architecture-diagrams.md still has the old OpenClaw diagrams. It has the pivot notice we added,
+  but the mermaid diagrams themselves still show OpenClaw. A fresh agent asked to draw the current state would need to
+  generate new diagrams from the Brain plan rather than reading the old ones.
+
+  So: yes for a handoff or status-check agent. Mostly yes for a "visualize current state" request — it would read the
+  Brain plan §1 mermaid diagram (which is accurate) plus the deployment notes, and could reconstruct a current-state
+  picture from those.
+
+
+
+● docs/brain-status.md is now the handoff document. It gives a planner:
+
+  - Overall position — "97% done, one human step left"
+  - Task-by-task table — 12 items with ✅/🔴/⏳
+  - Live service state — exact container names, ports, what's running
+  - The blocker — exact steps for the QR scan, why it can't be automated
+  - 5 deviations from plan — what was wrong in the original plan and how it was fixed
+  - Langfuse credentials — so the planner/next executor doesn't have to hunt for them
+  - Next ordered actions — tagged [HUMAN] vs [EXECUTOR] so the planner knows what needs a person vs. what the next
+  executor session can do
+  - Phase 2–4 status — not started, with prerequisites
+  - Key files — everything a fresh executor needs to open first
+
+  A planner reading this in ~2 minutes knows exactly where things stand.

@@ -23,6 +23,9 @@ docker compose up -d
 # Ingest knowledge from knowledge/raw/ into Postgres (one-shot)
 docker compose run --rm ingest-worker python -m company_agent.ingest_worker.main sync
 
+# Seed intent vectors from intents/intent_seeds.yaml into Postgres (one-shot; --reset for full re-seed)
+docker compose run --rm ingest-worker python -m company_agent.intent_seeder.main sync
+
 # Tests (pytest, src/ on pythonpath via pyproject.toml)
 pip install -e ".[dev]"
 pytest
@@ -35,6 +38,7 @@ ruff check .
 pip install -e ".[eval]"
 python -m eval.run_eval --models haiku-4.5
 python -m eval.run_eval --models haiku-4.5,gemini-3-flash,gpt-5-mini
+python -m eval.run_eval --mode intent          # tool-correctness: hits rag-api /v1/classify_intent, asserts expected_intent
 
 # Smoke tests (read .env from project root automatically)
 python scripts/zoho_smoke_test.py          # verifies Zoho OAuth + COQL against sandbox
@@ -62,6 +66,19 @@ The plugin exposes both kinds of "knowledge" tools:
 
 If you edit FAQ wording, edit the strings in `index.js` directly — they are not sourced from `knowledge/raw/` at runtime. The agent skill ([openclaw/skills/customer-service-policy/SKILL.md](openclaw/skills/customer-service-policy/SKILL.md)) tells the model which path to prefer for which question shape.
 
+## The intent classifier (the routing brain)
+
+Both runtimes (OpenClaw and agent-core) route every patient turn through a single classifier before doing anything else. This is the deterministic spine — neither the LLM nor the FSM is allowed to skip it (`SKILL.md` / `AGENTS.md` make `classify_intent` mandatory after the handoff-state check).
+
+The pipeline:
+
+1. **`intents/intent_seeds.yaml`** — source of truth. ~10 Spanish example phrases per `intent_class`, each with a `dispatch.tool` (the first tool to call for that intent; `null` for conversational intents) and `dispatch.params`. Edit wording here, not in the DB.
+2. **[intent_seeder](src/company_agent/intent_seeder/main.py)** — one-shot CLI (like ingest-worker). Embeds each example (OpenAI 1536-dim) and upserts into the `intent_vectors` table on `(intent_class, example_text, language)`. All seeds go into the `es` bucket. Re-run after editing the YAML; use `--reset` for a full wipe-and-reseed.
+3. **rag-api `/v1/classify_intent`** ([intent.py](src/company_agent/rag_api/intent.py)) — embeds the inbound message, does cosine-NN against `intent_vectors`, and returns `intent` + `confidence` + a `decision` of `execute` / `clarify` / `fallback_llm`. Thresholds (`intent_threshold_execute`, `intent_threshold_clarify`, `intent_tiebreak_margin`) come from `RagSettings`/`.env`. Tie-break logic downgrades `execute`→`clarify` when the top-2 intents are within the margin. If embeddings are disabled, it always returns `fallback_llm` (so lexical-only deployments degrade to the LLM, not a crash).
+4. **Consumers:** the OpenClaw plugin's `classify_intent` tool ([index.js](openclaw/plugins/customer-service-tools/index.js)) and agent-core's [classifier_client.py](src/company_agent/agent_core/routing/classifier_client.py) both POST to the same endpoint. agent-core's client retries once before raising; on failure the FSM falls through to the LLM.
+
+The `dispatch` table in the response is loaded from the same `intent_seeds.yaml` at rag-api startup — so the YAML drives both *which intent matches* (via the embedded examples) and *what to do about it* (via `dispatch`).
+
 ## Zoho CRM module mapping
 
 The Zoho adapter ([zoho_client.py](src/company_agent/crm_adapter/zoho_client.py)) maps NutriWhite-specific Zoho modules:
@@ -83,7 +100,7 @@ When changing agent behavior, update both — they reinforce each other but are 
 
 ## Postgres schema is bootstrapped, not migrated
 
-[sql/001_init.sql](sql/001_init.sql) runs once via `docker-entrypoint-initdb.d/`. No migration tool. Schema changes for production require manual coordination. Indexes: GIN on `search_tsv` for FTS, HNSW (cosine) on the 1536-dim `embedding` column. The chunk's `search_tsv` is a `GENERATED ALWAYS AS` column — do not insert into it.
+SQL files in `sql/` run once via `docker-entrypoint-initdb.d/` in filename order — there is no migration tool, so schema changes for production require manual coordination (`scripts/apply_brain_sql.sh` is the prod helper). The set: `000_create_databases.sh` (creates the app + langfuse DBs), `001_init.sql` (`knowledge_chunks`), `002_handoff_state.sql` (handoff state machine), `003_intent_vectors.sql` (classifier vectors), `004_brain.sql` (the Brain tables below). Indexes: GIN on `search_tsv` for FTS, HNSW (cosine) on the 1536-dim `embedding` column. The chunk's `search_tsv` is a `GENERATED ALWAYS AS` column — do not insert into it.
 
 ## NutriWhite Brain (agent-core) — deployed, pre-cutover
 
@@ -178,4 +195,9 @@ The [openclaw/hooks/nw-message-journal](openclaw/hooks/nw-message-journal/) hook
 
 ## Eval harness
 
-[eval/run_eval.py](eval/run_eval.py) loads cases from `seeds.yaml`, runs them against each model in `MODEL_REGISTRY` (Anthropic/OpenAI/Google SDKs), and writes JSONL to `eval/results/<timestamp>/<model>.jsonl`. **No tool calls** — Phase 1 evaluates raw response quality (Spanish naturalness, persona match, whether the model says it would hand off, hallucination). Results dir is gitignored. The harness loads `.env` itself with a custom path resolver (it does NOT use `python-dotenv`).
+[eval/run_eval.py](eval/run_eval.py) has two modes:
+
+- **`--mode generation`** (default) — loads cases from `seeds.yaml`, runs them against each model in `MODEL_REGISTRY` (Anthropic/OpenAI/Google SDKs), writes JSONL to `eval/results/<timestamp>/<model>.jsonl`. **No tool calls** — evaluates raw response quality (Spanish naturalness, persona match, whether the model says it would hand off, hallucination).
+- **`--mode intent`** — tool-correctness: hits rag-api `/v1/classify_intent` for each case and asserts the returned intent matches `expected_intent`. This is how the classifier's accuracy is measured (the docs cite ~99% on the seed set).
+
+Results dir is gitignored. The harness loads `.env` itself with a custom path resolver (it does NOT use `python-dotenv`).
