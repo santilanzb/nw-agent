@@ -201,3 +201,26 @@ The [openclaw/hooks/nw-message-journal](openclaw/hooks/nw-message-journal/) hook
 - **`--mode intent`** — tool-correctness: hits rag-api `/v1/classify_intent` for each case and asserts the returned intent matches `expected_intent`. This is how the classifier's accuracy is measured (the docs cite ~99% on the seed set).
 
 Results dir is gitignored. The harness loads `.env` itself with a custom path resolver (it does NOT use `python-dotenv`).
+
+## graphify — the code graph
+
+`graphify-out/graph.json` is a tree-sitter graph of this repo. Rebuilt automatically by the
+post-commit and post-checkout hooks (`graphify update .` — AST only, no API cost, ~2 s).
+
+- **Ask the graph before grepping.** `graphify query "<question>"` ·
+  `graphify path "<A>" "<B>"` · `graphify explain "<symbol>"` · `graphify god-nodes` ·
+  `graphify affected "<symbol>"`. Node labels for methods carry a leading dot — `.check_active()`,
+  not `check_active` — and `affected` needs the exact label or it answers "no unique node match".
+- **It finds structure, not defects.** A call graph does not encode `except: ... = False`. It gets
+  you to the right file faster; the bug is still found by reading the body. Measured 2026-08-01.
+- **`--code-only` is not optional here.** Without it, docs and images are sent to an LLM, and the
+  backend is auto-selected in an order that reaches Kimi — Moonshot, in China — second. This repo
+  is patient-adjacent. Rebuild with `graphify extract . --code-only --no-cluster`, and verify no
+  model was called by checking `input_tokens: 0` in `graph.json`.
+- **`graph.json` is not pure structure.** It embeds the first 80 characters of docstrings and
+  `NOTE:`/`TODO:` comments, so it carries this code's sensitivity. It is gitignored; keep it so.
+- **A graphify edge is never doctrine.** `confidence` is `EXTRACTED` or `INFERRED`, both
+  `_origin: ast`. If it surfaces something durable about Zoho, WAHA or Stripe, a human writes that
+  into `cerebro/facts.md` with its read-only check.
+- **Never run `graphify claude install`** — it appends to this file and installs a PreToolUse hook
+  intercepting every tool call. This section is the hand-written equivalent, without the hook.

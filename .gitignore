@@ -27,3 +27,6 @@ eval/results/
 
 # Runtime journals / operational state
 runtime/
+
+# graphify code graph: embeds comment text, so it is not committed
+graphify-out/
