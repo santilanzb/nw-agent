@@ -1,6 +1,6 @@
 # nw-agent — domain facts
 
-<!-- verified: 2026-08-01 -->
+<!-- verified: 2026-08-11 (Zoho facts re-read live; 2026-08-01 items unchanged) -->
 
 Only what is specific to this project. Machine, harness and method facts belong in the master
 brain at `C:\Users\santi\.claude\cerebro`, not here.
@@ -73,10 +73,54 @@ fold accents. The field is `system_mandatory:false`, `api_create`/`api_update:tr
 only reads were run, so treat this as the safe write inventory, not a proven rejection boundary.
 Any CRM admin can change the set in the UI — re-read `getFields` before trusting it in new code.
 
-## Open, and it needs a live check
+## COQL escapes a single quote by DOUBLING it, and has no bind parameters
 
-- **Is `Product_Code` safe as the key for the nightly Products → `facts/prices.yaml` pull?**
-  `candidate-C4.md:109` and `tournament-verdict.md:98` (graft G2) designate `Products` as "the
-  single price source of truth". Verified live 2026-08-01: **`Product_Code` is NOT unique and can
-  be null** — `PLAN-2CONS-FULL-05` exists twice. Keying on it will silently collapse or drop rows,
-  and this feeds prices. Decide the key before that pull is built.
+Verified live 2026-08-11:
+
+- `where Last_Name = 'O\'Brien'` → `{"code":"SYNTAX_ERROR","details":{"line":1,"column":55}}`
+- `where Last_Name = 'O''Brien'` → parses, returns `[]`
+- `where id = '4806334000196115218'` → returns the record, so **record ids may be quoted** like
+  any other literal.
+
+The request body is a single `select_query` string — there is no parameter binding, so every value
+is interpolated and escaping is the only defence. All of it lives in one place:
+`src/company_agent/crm_adapter/coql.py` (`quote` / `record_id` / `like_contains` / `limit` /
+`identifier`). Do not hand-build a COQL literal anywhere else.
+
+## `Product_Code` cannot key the Products pull — RESOLVED, use the record `id`
+
+The open question from 2026-08-01 is closed. Verified live 2026-08-11 across all **178 active**
+products, and it is worse than first recorded:
+
+- **~60% of active products have `Product_Code = null`** — the entire Nordic, Zoomer, DUTCH and
+  current plan families.
+- Codes repeat across **active** rows at *different prices*: `PLAN-MANT-1CONS-FULL-01` is both
+  id `4806334000196115227` "Plan de 1 consulta Mantenimiento" **$149** and id
+  `4806334000196115282` "…Mantenimiento F&F" **$135**. Same for `-02` ($279 / $249) and
+  `-03` ($309 / $299).
+
+⇒ The nightly Products → `facts/prices.yaml` pull (graft G2) **keys on the Zoho record `id`**.
+`Product_Code` is carried as a non-unique display field, and the pull emits a hygiene report of
+null/duplicate codes for calidad@.
+
+## The consultation catalogue was restructured; the FAQ's $229 plan is inactive
+
+Verified live 2026-08-11. `PLAN-1CONS-FULL-01` "PLAN 1 CONSULTA" **$229 is `Product_Active:
+false`** — there is no active $229 plan, yet both live policy surfaces still quote it. The active
+families are:
+
+| Family | Prices (F&F variant) |
+|---|---|
+| PLAN INMUNONUTRICIÓN 1 / 2 / 4 / 6 | $249 / $399 / $599 / $799 ($224 / $359 / $539 / $719) |
+| PLAN NUTRICIÓN 1 / 2 / 3 / 5 | $149 / $279 / $329 / $450 ($134 / $251 / $296 / $405) |
+| PLAN CONTROL (EE / EN / NN) | $369 / $329 / $279 ($332 / $296 / $251) |
+| Legacy still active | 3 CONSULTAS $559 · 5 CONSULTAS $789 · Mantenimiento $149 / $279 / $309 |
+
+Every family has a parallel **F&F** row at a lower price. F&F is excluded from what Gutty may
+quote — an unqualified discount is a silent revenue leak with no audit trail.
+
+## Open
+
+Nothing outstanding. The one unproven item — whether an off-list `Quote_Stage` value draws a hard
+`INVALID_DATA`/400 — is recorded inline in that section, where anyone about to write the field will
+actually read it.

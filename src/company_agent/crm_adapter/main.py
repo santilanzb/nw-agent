@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException
 import uvicorn
+from fastapi import Depends, FastAPI, HTTPException
 
 from company_agent.common.auth import require_internal_api_key
-from company_agent.common.handoff_state import HandoffStateStore, HandoffStateRecord
+from company_agent.common.handoff_state import HandoffStateRecord, HandoffStateStore
 from company_agent.common.logging import configure_logging
 
 from .adapters import BaseCrmAdapter, MockCrmAdapter, ZohoCrmAdapter

@@ -17,6 +17,7 @@ from typing import Any
 
 import httpx
 
+from . import coql
 
 # ── Phone normalization ────────────────────────────────────────────────────────
 
@@ -136,10 +137,13 @@ class ZohoClient:
     )
 
     def find_contact_by_phone(self, e164: str) -> dict | None:
-        suffix = phone_search_suffix(e164)
+        # Normalize first, then take the suffix: slicing the raw string would cut
+        # through punctuation and yield a different (shorter) match on a formatted
+        # number like "+58 414-5610594".
+        pattern = coql.like_contains(phone_search_suffix(e164), digits_only=True)
         rows = self.coql(
             f"SELECT {self.CONTACT_FIELDS} FROM Contacts "
-            f"WHERE Phone like '%{suffix}%' LIMIT 3"
+            f"WHERE Phone like {pattern} LIMIT 3"
         )
         if not rows:
             return None
@@ -153,14 +157,14 @@ class ZohoClient:
     def find_contact_by_id(self, contact_id: str) -> dict | None:
         rows = self.coql(
             f"SELECT {self.CONTACT_FIELDS} FROM Contacts "
-            f"WHERE id = {contact_id} LIMIT 1"
+            f"WHERE id = {coql.record_id(contact_id)} LIMIT 1"
         )
         return rows[0] if rows else None
 
     def find_contact_by_email(self, email: str) -> dict | None:
         rows = self.coql(
             f"SELECT {self.CONTACT_FIELDS} FROM Contacts "
-            f"WHERE Email = '{email}' LIMIT 1"
+            f"WHERE Email = {coql.quote(email)} LIMIT 1"
         )
         return rows[0] if rows else None
 
@@ -175,8 +179,8 @@ class ZohoClient:
     def list_deals_for_contact(self, contact_id: str, limit: int = 5) -> list[dict]:
         return self.coql(
             f"SELECT {self.DEAL_FIELDS} FROM Deals "
-            f"WHERE Contact_Name = {contact_id} "
-            f"ORDER BY Created_Time DESC LIMIT {limit}"
+            f"WHERE Contact_Name = {coql.record_id(contact_id)} "
+            f"ORDER BY Created_Time DESC LIMIT {coql.limit(limit)}"
         )
 
     # ── Consultas ─────────────────────────────────────────────────────────────
@@ -189,8 +193,8 @@ class ZohoClient:
     def list_consultas_for_contact(self, contact_id: str, limit: int = 5) -> list[dict]:
         return self.coql(
             f"SELECT {self.CONSULTA_FIELDS} FROM Consultas "
-            f"WHERE Comunidad_NW = {contact_id} "
-            f"ORDER BY Fecha_Programada DESC LIMIT {limit}"
+            f"WHERE Comunidad_NW = {coql.record_id(contact_id)} "
+            f"ORDER BY Fecha_Programada DESC LIMIT {coql.limit(limit)}"
         )
 
     # ── Examenes ─────────────────────────────────────────────────────────────
@@ -203,8 +207,8 @@ class ZohoClient:
     def list_examenes_for_contact(self, contact_id: str, limit: int = 10) -> list[dict]:
         return self.coql(
             f"SELECT {self.EXAMEN_FIELDS} FROM Examenes "
-            f"WHERE Comunidad_NW = {contact_id} "
-            f"ORDER BY Created_Time DESC LIMIT {limit}"
+            f"WHERE Comunidad_NW = {coql.record_id(contact_id)} "
+            f"ORDER BY Created_Time DESC LIMIT {coql.limit(limit)}"
         )
 
     # ── Notes (Handoff) ───────────────────────────────────────────────────────

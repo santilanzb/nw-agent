@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Sequence
+from collections.abc import Sequence
 from uuid import uuid4
 
 from .models import (
@@ -16,7 +16,6 @@ from .models import (
     TicketDraftResponse,
     TicketRecord,
 )
-
 
 # ── Abstract base ─────────────────────────────────────────────────────────────
 
@@ -146,7 +145,7 @@ class ZohoCrmAdapter(BaseCrmAdapter):
     Uses COQL for reads and REST for Notes (handoff).
     """
 
-    def __init__(self, client: "ZohoClient") -> None:  # noqa: F821 — forward ref
+    def __init__(self, client: ZohoClient) -> None:  # noqa: F821 — forward ref
         self._crm = client
 
     # ── helpers ──────────────────────────────────────────────────────────────
