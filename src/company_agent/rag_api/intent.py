@@ -9,14 +9,14 @@ from company_agent.common.embeddings import EmbeddingClient
 from company_agent.packages.registry import discover_manifests, merge_seeds
 
 from .config import RagSettings
-
-logger = logging.getLogger(__name__)
 from .schemas import (
     ClassifyIntentRequest,
     ClassifyIntentResponse,
     IntentDispatch,
     IntentMatch,
 )
+
+logger = logging.getLogger(__name__)
 
 INTENT_SQL = """
 SELECT
