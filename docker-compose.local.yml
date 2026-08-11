@@ -1,0 +1,39 @@
+# Local development overlay.
+#
+# Deliberately NOT named docker-compose.override.yml: that filename is auto-loaded
+# by every `docker compose` invocation, so on the droplet a stray copy would
+# silently swap production settings for these. Always pass it explicitly:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d postgres rag-api crm-adapter
+#
+# Contains no secrets — only local-only values that make the stack boot without
+# the production .env.
+
+services:
+  rag-api:
+    environment:
+      INTERNAL_API_KEY: local-dev-internal-key
+
+  crm-adapter:
+    environment:
+      INTERNAL_API_KEY: local-dev-internal-key
+      # Hermetic by default. Flip to `zoho` (with ZOHO_SANDBOX=true) only when
+      # deliberately exercising the real API — never against production.
+      CRM_PROVIDER: mock
+
+  agent-core:
+    environment:
+      INTERNAL_API_KEY: local-dev-internal-key
+      # No WAHA instance locally, so no signing key exists. agent-core refuses to
+      # boot with an empty key unless this is explicitly true — which is the point.
+      WAHA_HOOK_HMAC_KEY: ""
+      ALLOW_UNVERIFIED_WEBHOOKS: "true"
+      WAHA_API_KEY: local-dev
+      # Tighter loop so the sweeper's behaviour is observable in a dev session.
+      SWEEPER_INTERVAL_SECONDS: "10"
+      SWEEPER_PENDING_GRACE_SECONDS: "15"
+      LOG_LEVEL: DEBUG
+# Note: the base file makes agent-core depend on waha, and compose merges
+# depends_on rather than replacing it — so `up agent-core` still starts WAHA.
+# Local integration tests instead run agent-core in-process against
+# rag-api/crm-adapter on localhost, which needs no WAHA at all.

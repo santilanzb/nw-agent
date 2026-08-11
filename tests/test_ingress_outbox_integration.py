@@ -10,39 +10,22 @@ locking, which a mock cannot express. Skipped when no database is reachable:
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 import pytest
+from _stack import SKIP_DB, db_available, db_url
 
 from company_agent.agent_core.ingress.inbox import InboxWriter
 from company_agent.agent_core.outbox.sender import SendOutbox
 from company_agent.agent_core.transport.base import InboundEvent
 from company_agent.common.db import make_async_pool
 
-DB_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    os.environ.get("DATABASE_URL", "postgresql://agent:agent@localhost:5432/company_agent"),
-)
+DB_URL = db_url()
 
-def _db_available() -> bool:
-    try:
-        import psycopg
-
-        with psycopg.connect(DB_URL, connect_timeout=3) as conn:
-            conn.execute("select 1 from intake_events limit 1")
-        return True
-    except Exception:  # noqa: BLE001 - any failure at all means "skip these tests"
-        return False
-
-
-pytestmark = pytest.mark.skipif(
-    not _db_available(),
-    reason="no Postgres with the Stage 0 schema; run docker compose up -d postgres && alembic upgrade head",
-)
+pytestmark = pytest.mark.skipif(not db_available(), reason=SKIP_DB)
 
 
 # psycopg refuses to run async on Windows' default ProactorEventLoop, and

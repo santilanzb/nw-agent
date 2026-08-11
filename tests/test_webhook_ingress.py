@@ -7,40 +7,15 @@ nothing at all.
 """
 from __future__ import annotations
 
-import os
 import time
 import uuid
 
 import pytest
+from _stack import SKIP_DB, db_available, db_url
 
-DB_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    os.environ.get("DATABASE_URL", "postgresql://agent:agent@localhost:5432/company_agent"),
-)
+DB_URL = db_url()
 
-
-def _db_available() -> bool:
-    try:
-        import psycopg
-
-        with psycopg.connect(DB_URL, connect_timeout=3) as conn:
-            conn.execute("select 1 from intake_events limit 1")
-        return True
-    except Exception:  # noqa: BLE001 - any failure means "skip these tests"
-        return False
-
-
-pytestmark = pytest.mark.skipif(
-    not _db_available(),
-    reason="no Postgres with the Stage 0 schema; run docker compose up -d postgres && alembic upgrade head",
-)
-
-# Must be set before importing main, which reads settings at import time.
-os.environ["DATABASE_URL"] = DB_URL
-os.environ["WAHA_HOOK_HMAC_KEY"] = ""
-os.environ["ALLOW_UNVERIFIED_WEBHOOKS"] = "true"
-os.environ.setdefault("INTERNAL_API_KEY", "test-key")
-os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
+pytestmark = pytest.mark.skipif(not db_available(), reason=SKIP_DB)
 
 
 def _waha_body(event_id: str, text: str = "hola", msg_type: str = "chat") -> dict:
@@ -92,16 +67,12 @@ def _wait_for_status(event_id: str, wanted: str, timeout: float = 5.0) -> str | 
 
 
 @pytest.fixture(scope="module")
-def app_client():
+def app_client(agent_app):
     """
-    One client for the module: agent-core's pool is a module-level singleton, so
-    it opens and closes exactly once per process. That is true in production too,
-    which is why the tests model it rather than work around it.
+    Ingress-only view of the shared app: the FSM is stubbed so these tests assert
+    what the webhook durably records, not what a turn produces.
     """
-    from fastapi.testclient import TestClient
-
-    from company_agent.agent_core import main as main_mod
-
+    client, main_mod = agent_app
     handled: list = []
 
     async def fake_handle(event) -> None:
@@ -110,8 +81,7 @@ def app_client():
     original = main_mod.fsm.handle
     main_mod.fsm.handle = fake_handle
     try:
-        with TestClient(main_mod.app) as client:
-            yield client, handled
+        yield client, handled
     finally:
         main_mod.fsm.handle = original
 
