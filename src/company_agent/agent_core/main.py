@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from company_agent.common.db import make_async_pool
+from company_agent.packages.drift import PackageDrift, check_drift
 from company_agent.packages.registrar import install_packages
 
 from .brain.turn_log import TurnLogWriter
@@ -166,13 +167,58 @@ async def _sweeper() -> None:
 
 # -- FastAPI app --------------------------------------------------------------
 
+async def _seeded_intent_classes() -> set[str] | None:
+    """What the classifier can actually match. None if the query fails."""
+    try:
+        async with pool.connection() as conn:
+            rows = await (await conn.execute("SELECT DISTINCT intent_class FROM intent_vectors")).fetchall()
+        return {row["intent_class"] for row in rows}
+    except Exception:
+        logger.exception("could not read seeded intent classes — skipping the database half")
+        return None
+
+
+async def _check_package_drift() -> None:
+    """
+    Three sets that must agree: declared, claimed, seeded.
+
+    Nothing compared them before, so a seeded intent no task claimed was
+    discovered one patient at a time — each one escalated to a human by the
+    fallback handler.
+    """
+    report = check_drift(
+        manifest_intents={i for p in installed_packages for i in p.handled_intents},
+        claimed_intents=set(registry.claimed_intents()),
+        seeded_intents={i for p in installed_packages for i in p.intents},
+        db_intents=await _seeded_intent_classes(),
+    )
+
+    if report.fatal:
+        # Manifests and tasks ship in the same build from the same repo. If they
+        # disagree, no environment explains it and booting anyway would serve
+        # patients from a configuration nobody intended.
+        raise PackageDrift(
+            f"installed packages and registered tasks disagree: {report.as_dict()}"
+        )
+
+    if report.database_drift:
+        logger.error(
+            "intent_vectors is out of step with the installed packages — re-run the "
+            "intent seeder. orphaned=%s missing=%s",
+            sorted(report.orphaned_in_db),
+            sorted(report.missing_from_db),
+        )
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await pool.open(wait=True, timeout=15)
+    await _check_package_drift()
     sweeper = asyncio.create_task(_sweeper())
     logger.info(
-        "agent-core up transports=%s claimed_intents=%d tasks=%s",
+        "agent-core up transports=%s packages=%s claimed_intents=%d tasks=%s",
         list(transports),
+        [p.name for p in installed_packages],
         len(registry.claimed_intents()),
         [t.name for t in registry.tasks],
     )
@@ -235,5 +281,28 @@ async def admin_resume(request: Request) -> JSONResponse:
 
 @app.get("/admin/tasks")
 async def admin_tasks() -> JSONResponse:
+    """
+    What is installed, and whether it agrees with the database right now.
+
+    The drift report is recomputed per request rather than cached from boot —
+    `intent_vectors` changes underneath a running process every time the seeder
+    runs, which is exactly the window in which you want to look.
+    """
     tasks = [{"name": t.name, "intents": sorted(t.handled_intents)} for t in registry.tasks]
-    return JSONResponse({"tasks": tasks})
+    packages = [
+        {
+            "name": p.name,
+            "version": p.manifest.version,
+            "task_name": p.manifest.task_name,
+            "seeded_intents": len(p.intents),
+            "synthetic_intents": sorted(p.manifest.synthetic_intents),
+        }
+        for p in installed_packages
+    ]
+    report = check_drift(
+        manifest_intents={i for p in installed_packages for i in p.handled_intents},
+        claimed_intents=set(registry.claimed_intents()),
+        seeded_intents={i for p in installed_packages for i in p.intents},
+        db_intents=await _seeded_intent_classes(),
+    )
+    return JSONResponse({"tasks": tasks, "packages": packages, "drift": report.as_dict()})
