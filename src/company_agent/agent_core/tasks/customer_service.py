@@ -6,12 +6,8 @@ from ..llm.anthropic import LLMClient
 from ..llm.composition import (
     CLARIFY_SYSTEM,
     FALLBACK_SYSTEM,
-    FAREWELL_SYSTEM,
-    GREETING_SYSTEM,
     build_clarify_prompt,
     build_fallback_prompt,
-    build_farewell_prompt,
-    build_greeting_prompt,
 )
 from ..models import HandoffArgs, TaskResult, TurnContext
 
@@ -84,6 +80,12 @@ HANDOFF_ENGLISH_PHRASE = "Let me connect you with a colleague who'll attend you 
 GREETING_INTENTS = frozenset({"greeting"})
 FAREWELL_INTENTS = frozenset({"farewell"})
 
+# Greetings and farewells are the highest-volume intents in the whole product and
+# there is nothing for a model to decide in them. Composing them burned an LLM
+# call per "hola" and added latency to the first impression.
+CANNED_GREETING = "¡Hola! 🩵 Soy Gutty, de NutriWhite. ¿En qué te puedo ayudar hoy?"
+CANNED_FAREWELL = "¡Hasta pronto! 🩵 Cuídate mucho."
+
 
 class CustomerServiceTask:
     name = "customer_service"
@@ -148,8 +150,8 @@ class CustomerServiceTask:
         if intent == "acknowledgment":
             return TaskResult.silent()
 
-        # ── 4. Clarify — Sonnet composes question ─────────────────────────────
-        if decision == "clarify":
+        # ── 4. Clarify — the model composes the disambiguating question ───────
+        if decision == "clarify" and not ctx.deterministic_only:
             try:
                 prompt = build_clarify_prompt(ctx.inbound_text, cls.top_matches)
                 text, tok_in, tok_out = await self._llm.compose(
@@ -169,46 +171,23 @@ class CustomerServiceTask:
                     "¿Me puedes dar más detalles sobre lo que necesitas? 🩵"
                 )
 
-        # ── 5. Greeting / farewell — Haiku composes ───────────────────────────
+        # ── 5. Greeting / farewell — canned, no model call ────────────────────
         if intent in GREETING_INTENTS:
-            try:
-                prompt = build_greeting_prompt(ctx.inbound_text)
-                text, tok_in, tok_out = await self._llm.compose(
-                    turn_id=ctx.turn_id,
-                    tier="default",
-                    system=GREETING_SYSTEM,
-                    user_message=prompt,
-                    max_tokens=256,
-                    trace_name="greeting",
-                )
-                return TaskResult.llm_composed(
-                    text, self._llm.model("default"), tok_in, tok_out
-                )
-            except Exception as exc:
-                logger.error("greeting compose failed: %s", exc)
-                return TaskResult.canned(
-                    "Hola 🩵 Soy Gutty de NutriWhite. ¿En qué te puedo ayudar?"
-                )
+            return TaskResult.canned(CANNED_GREETING)
 
         if intent in FAREWELL_INTENTS:
-            try:
-                prompt = build_farewell_prompt(ctx.inbound_text)
-                text, tok_in, tok_out = await self._llm.compose(
-                    turn_id=ctx.turn_id,
-                    tier="default",
-                    system=FAREWELL_SYSTEM,
-                    user_message=prompt,
-                    max_tokens=256,
-                    trace_name="farewell",
-                )
-                return TaskResult.llm_composed(
-                    text, self._llm.model("default"), tok_in, tok_out
-                )
-            except Exception as exc:
-                logger.error("farewell compose failed: %s", exc)
-                return TaskResult.canned("¡Hasta pronto! 🩵 Cuídate mucho.")
+            return TaskResult.canned(CANNED_FAREWELL)
 
-        # ── 6. Fallback / unknown / patient-specific (Phase 1: LLM fallback) ──
+        # ── 6. Everything below composes. If a pre-send gate could not be ────
+        # evaluated we stop here rather than risk answering into a live handoff.
+        if ctx.deterministic_only:
+            logger.warning(
+                "deterministic_only turn has no deterministic answer intent=%s — staying silent",
+                intent,
+            )
+            return TaskResult.silent()
+
+        # ── 7. Fallback / unknown / patient-specific ──────────────────────────
         try:
             prompt = build_fallback_prompt(ctx.inbound_text)
             text, tok_in, tok_out = await self._llm.compose(

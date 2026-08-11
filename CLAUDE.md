@@ -98,9 +98,41 @@ Reads use **COQL** (`/crm/v8/coql`). Writes (Notes only) use REST. Token refresh
 
 When changing agent behavior, update both — they reinforce each other but are loaded in different OpenClaw contexts. Tool descriptions in [openclaw/plugins/customer-service-tools/index.js](openclaw/plugins/customer-service-tools/index.js) are also part of the policy surface (the model uses descriptions to decide when to call a tool); they're written in Spanish on purpose.
 
-## Postgres schema is bootstrapped, not migrated
+## Postgres schema: Alembic is authoritative, `sql/` is the frozen baseline
 
-SQL files in `sql/` run once via `docker-entrypoint-initdb.d/` in filename order — there is no migration tool, so schema changes for production require manual coordination (`scripts/apply_brain_sql.sh` is the prod helper). The set: `000_create_databases.sh` (creates the app + langfuse DBs), `001_init.sql` (`knowledge_chunks`), `002_handoff_state.sql` (handoff state machine), `003_intent_vectors.sql` (classifier vectors), `004_brain.sql` (the Brain tables below). Indexes: GIN on `search_tsv` for FTS, HNSW (cosine) on the 1536-dim `embedding` column. The chunk's `search_tsv` is a `GENERATED ALWAYS AS` column — do not insert into it.
+**Schema changes are Alembic migrations. Do not edit `sql/*.sql`** — those files are frozen at
+revision `0001` and survive only because `docker-entrypoint-initdb.d/` still uses them to bootstrap
+a fresh local database.
+
+```bash
+export DATABASE_URL=postgresql://agent:agent@localhost:5432/company_agent
+alembic upgrade head          # apply; idempotent, safe over an initdb-built database
+alembic upgrade head --sql    # render the DDL for review before touching prod
+alembic current               # what this database is at
+alembic stamp 0001            # existing droplet DB: adopt the baseline without re-running it
+```
+
+`alembic/env.py` reads `DATABASE_URL` from the environment (never from `alembic.ini`) and rewrites
+`postgresql://` to `postgresql+psycopg://`, since the runtime uses psycopg 3 and psycopg2 is not
+installed. There are no ORM models — migrations are raw SQL via `op.execute`, so
+`--autogenerate` does not work here.
+
+Both bootstrap paths converge on the same schema, verified 2026-08-11: initdb-then-`upgrade head`
+and `upgrade head` on an empty database both yield 16 tables. `0001` is idempotent (`IF NOT
+EXISTS` throughout); `0002` round-trips through `downgrade`.
+
+Revisions: `0001` baseline (freezes `000`–`004`) · `0002` Stage 0 substrate (`intake_events`,
+`send_intents`, `identity_registry`, `approval_requests`, `crm_write_log`, `consent_events`; adds
+`conversation_class` to `turn_log`, temporal validity to `patient_facts`, and a `visibility` flag
+on the knowledge tables).
+
+Two schema details that bite: the chunk's `search_tsv` is `GENERATED ALWAYS AS` — do not insert
+into it, and changing its tsconfig rebuilds the column. `patient_facts` is now append-only: a
+changed fact means setting `valid_to` on the old row and inserting a new one, guarded by the
+partial unique index `uq_patient_facts_current`. Indexes: GIN on `search_tsv`, HNSW (cosine) on
+the 1536-dim `embedding`.
+
+`scripts/apply_brain_sql.sh` is superseded by `alembic upgrade head`.
 
 ## NutriWhite Brain (agent-core) — deployed, pre-cutover
 
@@ -118,25 +150,63 @@ The Brain is the replacement for OpenClaw orchestration. All services are deploy
 
 ```
 src/company_agent/agent_core/
-  main.py           # FastAPI: /webhooks/waha (HMAC-verified), /health
+  main.py           # FastAPI: verify → normalize → inbox.record → ACK → spawn turn; sweeper task
   config.py         # AgentCoreSettings (all from .env)
-  fsm.py            # TurnFSM: dedup → group/DM branch → classify → task → side-effects → send
-  models.py         # WahaInboundMessage, TurnContext, TaskResult, ClassificationResult, HandoffArgs
+  fsm.py            # TurnFSM: mute → media gate → classify → task → side-effects → outbox
+                    #   turn_id_for(event) — deterministic turn ids, see below
+  models.py         # TurnContext, TaskResult, ClassificationResult, HandoffArgs
   transport/
-    waha.py         # WahaClient.send_text(), normalize_waha_event(), dm_jid()
-    hmac_verify.py  # verify_waha_hmac() — SHA-512, used on every inbound webhook
+    base.py         # Transport Protocol + InboundEvent/InboundMedia + MessageClass
+    waha.py         # WahaTransport: verify/normalize/address_for/send_text
+    hmac_verify.py  # verify_waha_hmac() — SHA-512
+  ingress/
+    inbox.py        # InboxWriter: record (dedup), mark_*, claim_stale (FOR UPDATE SKIP LOCKED)
+  outbox/
+    sender.py       # SendOutbox: row before transport call, per-class in-doubt policy
   routing/
     classifier_client.py  # POST /v1/classify_intent → ClassificationResult
-    handoff_client.py     # check_active, create_handoff, resume, claim
+    handoff_client.py     # check_active (raises — see below), create_handoff, resume, claim
   tasks/
-    base.py               # TaskModule Protocol + TaskRegistry
-    customer_service.py   # CustomerServiceTask: deterministic FAQ, handoff, LLM fallback
+    base.py               # TaskModule Protocol + explicit-claim TaskRegistry
+    customer_service.py   # deterministic FAQ, handoff, LLM fallback
+    fallback.py           # unclaimed intents → loud log + human escalation
   brain/
-    turn_log.py           # TurnLogWriter — async write to turn_log table (phone SHA-256 hashed)
+    turn_log.py           # TurnLogWriter (phone SHA-256 hashed)
   llm/
     anthropic.py          # LLMClient with Langfuse tracing (trace_id = turn_id)
     composition.py        # Spanish system prompts + prompt builders
 ```
+
+### The durability rules — these are load-bearing, don't undo them
+
+- **Nothing is ACKed that is not durable.** The webhook verifies, normalizes,
+  inserts into `intake_events`, and only then returns 200. `(source, source_event_id)`
+  makes redelivery a no-op. The old in-memory `_SEEN` cache is gone; it was
+  per-process and lost on restart.
+- **Turn ids are deterministic**: `turn_id_for(event) = uuid5(NAMESPACE_URL, "nw-agent:turn:{source}:{id}")`.
+  A random id per attempt would give a re-driven event a fresh `turn_log` row *and* a
+  fresh send idempotency key, so the sweeper would answer the patient twice. Send keys
+  are likewise derived from the inbound event, never from the clock.
+- **Sends go through the outbox**, never straight to a transport. `message_class`
+  decides in-doubt behaviour: `reply`/`utility`/`team` may be re-sent once; `marketing`
+  is **never** blind re-sent (Meta bills it, the patient sees it twice, it counts
+  against the per-user cap) — it degrades to a human task.
+- **`handoff_client.check_active` raises on failure and must stay that way.** An
+  exception is not "no human is on this conversation". The FSM catches it, sets
+  `TurnContext.deterministic_only`, and the task layer answers from FAQ/handoff only —
+  never composing over a live handoff.
+- **Media is acknowledged, not dropped.** `waha.py` used to return `None` for every
+  image and voice note, so payment proofs vanished silently.
+- The sweeper is a plain asyncio loop for now — the C1 fallback design. It becomes a
+  DBOS scheduled tick once the Stage-0 spike passes.
+
+### Running agent-core on Windows
+
+psycopg's async driver **refuses to run on Windows' default ProactorEventLoop**, and
+`AsyncConnectionPool` then retries the failed connection forever — so the symptom is a
+hang with no output, not an error. `main.py` sets the selector policy on `win32`; async
+tests pass `loop_factory=asyncio.SelectorEventLoop`. Irrelevant in Docker/Linux, which is
+where the services actually run.
 
 ### Key implementation notes
 

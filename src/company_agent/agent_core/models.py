@@ -1,27 +1,11 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Literal
 
-
-# ── WAHA payload shapes ───────────────────────────────────────────────────────
-
-@dataclass(slots=True)
-class WahaInboundMessage:
-    event_id: str           # WAHA message id (used for dedup)
-    from_jid: str           # raw JID from WAHA (e.g. "584145610594@c.us")
-    phone: str              # normalized E.164 ("+584145610594"); group JID for groups
-    group_jid: str | None   # set when is_group=True; same as from_jid
-    participant_jid: str | None  # actual sender inside a group
-    participant_phone: str | None  # E.164 of the group sender
-    text: str               # message body
-    is_group: bool
-    from_me: bool
-    is_status: bool         # WhatsApp status update (skip)
-    timestamp: int
-    sender_name: str | None
-
+# Inbound wire shapes live in transport/base.py as the transport-neutral
+# InboundEvent. Nothing above the transport layer sees a provider's payload.
 
 # ── Intent/dispatch shapes (mirror rag_api.schemas, kept local to avoid coupling) ──
 
@@ -61,6 +45,10 @@ class TurnContext:
     is_group: bool = False
     group_jid: str | None = None
     participant_phone: str | None = None
+    # Set when a pre-send gate could not be evaluated — today, when the handoff
+    # mute check failed. Task modules must answer from deterministic sources only
+    # and never compose with the LLM: we may be talking into a live human handoff.
+    deterministic_only: bool = False
 
 
 @dataclass

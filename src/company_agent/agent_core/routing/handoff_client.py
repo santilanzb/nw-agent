@@ -14,25 +14,26 @@ class HandoffClient:
     def __init__(self, base_url: str, api_key: str) -> None:
         self._base_url = base_url.rstrip("/")
         self._headers = {"X-Internal-Api-Key": api_key, "Content-Type": "application/json"}
+        self._client = httpx.AsyncClient(timeout=_TIMEOUT, headers=self._headers)
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
 
     async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.post(
-                f"{self._base_url}{path}",
-                json=payload,
-                headers=self._headers,
-            )
-            resp.raise_for_status()
-            return resp.json()  # type: ignore[return-value]
+        resp = await self._client.post(f"{self._base_url}{path}", json=payload)
+        resp.raise_for_status()
+        return resp.json()  # type: ignore[return-value]
 
     async def check_active(self, phone: str) -> bool:
-        """Return True if there is an active handoff for this phone."""
-        try:
-            data = await self._post("/v1/handoff/state/check", {"contact_phone": phone})
-            return bool(data.get("active", False))
-        except Exception as exc:
-            logger.warning("handoff state check failed (fail-open): %s", exc)
-            return False  # fail open — let agent answer
+        """
+        Return True if there is an active handoff for this phone.
+
+        Raises on failure. The caller must NOT read an exception as "not muted":
+        an unreachable crm-adapter used to mean Gutty talked over a human asesora
+        mid-conversation. The FSM degrades to deterministic-only replies instead.
+        """
+        data = await self._post("/v1/handoff/state/check", {"contact_phone": phone})
+        return bool(data.get("active", False))
 
     async def create_handoff(
         self,
