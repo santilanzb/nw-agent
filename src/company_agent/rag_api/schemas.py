@@ -55,6 +55,20 @@ class IntentDispatch(BaseModel):
     params: dict
 
 
+class ReloadDispatchResponse(BaseModel):
+    """
+    What a reload changed. The diff costs nothing to compute and is what makes
+    this usable from a runbook rather than by grepping logs afterwards.
+    """
+
+    source: Literal["intent_vectors"]
+    intent_classes: int
+    intents: list[str]
+    added: list[str]
+    removed: list[str]
+    changed: list[str]
+
+
 class ClassifyIntentResponse(BaseModel):
     intent: str
     confidence: float

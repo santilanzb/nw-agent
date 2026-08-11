@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import threading
 from typing import Literal
 
 from company_agent.common.db import connect, vector_literal
@@ -7,6 +9,8 @@ from company_agent.common.embeddings import EmbeddingClient
 from company_agent.packages.registry import discover_manifests, merge_seeds
 
 from .config import RagSettings
+
+logger = logging.getLogger(__name__)
 from .schemas import (
     ClassifyIntentRequest,
     ClassifyIntentResponse,
@@ -24,6 +28,13 @@ WHERE embedding IS NOT NULL
   AND language = %(language)s
 ORDER BY embedding <=> %(embedding)s::vector
 LIMIT %(top_k)s
+"""
+
+
+DISPATCH_SQL = """
+SELECT DISTINCT ON (intent_class) intent_class, metadata
+FROM intent_vectors
+ORDER BY intent_class, created_at DESC
 """
 
 
@@ -45,6 +56,32 @@ def load_dispatch_table() -> dict[str, IntentDispatch]:
     }
 
 
+def load_dispatch_table_from_db(database_url: str) -> dict[str, IntentDispatch]:
+    """
+    Build the dispatch table from `intent_vectors.metadata`.
+
+    The seeder has always written the dispatch payload onto every row it
+    inserts; rag-api simply never read it, parsing the YAML instead. Reading it
+    here makes the vectors and the dispatch table physically incapable of
+    disagreeing — one writer, one transaction — where before the seeder could
+    write new vectors while rag-api kept dispatching from an older image.
+
+    Rows seeded before this column carried a dispatch are treated as
+    "classify but do not act", which is what an absent dispatch already meant.
+    """
+    with connect(database_url) as conn:
+        rows = conn.execute(DISPATCH_SQL).fetchall()
+
+    table: dict[str, IntentDispatch] = {}
+    for row in rows:
+        dispatch = (row["metadata"] or {}).get("dispatch") or {}
+        table[row["intent_class"]] = IntentDispatch(
+            tool=dispatch.get("tool"),
+            params=dispatch.get("params") or {},
+        )
+    return table
+
+
 class IntentClassifier:
     def __init__(
         self,
@@ -54,9 +91,42 @@ class IntentClassifier:
     ) -> None:
         self._settings = settings
         self._embeddings = embeddings
-        self._dispatch_table = (
-            dispatch_table if dispatch_table is not None else load_dispatch_table()
-        )
+        # Empty until reload_dispatch() runs in the app's lifespan. Building it
+        # in the constructor would make importing this module require a
+        # database, which every unit test would then have to fake.
+        self._dispatch_table: dict[str, IntentDispatch] = dispatch_table or {}
+        self._reload_lock = threading.Lock()
+
+    @property
+    def dispatch_table(self) -> dict[str, IntentDispatch]:
+        return self._dispatch_table
+
+    def reload_dispatch(self) -> tuple[list[str], list[str], list[str]]:
+        """
+        Rebuild the dispatch table from Postgres. Returns (added, removed, changed).
+
+        `classify_intent` is a sync `def`, so FastAPI runs it in a threadpool and
+        these are real threads. The new table is built completely and then bound
+        in one statement: attribute rebinding is atomic under CPython, so a
+        concurrent lookup sees either the whole old table or the whole new one.
+        Mutating in place — `.clear()` then `.update()` — would expose a window
+        where a patient's turn dispatches to nothing.
+
+        The lock covers build-and-swap only, never reads, so two concurrent
+        reloads cannot both query and report contradictory diffs.
+        """
+        with self._reload_lock:
+            new_table = load_dispatch_table_from_db(self._settings.database_url)
+            old_table = self._dispatch_table
+            added = sorted(set(new_table) - set(old_table))
+            removed = sorted(set(old_table) - set(new_table))
+            changed = sorted(
+                intent
+                for intent in set(new_table) & set(old_table)
+                if new_table[intent] != old_table[intent]
+            )
+            self._dispatch_table = new_table
+        return added, removed, changed
 
     def classify(self, request: ClassifyIntentRequest) -> ClassifyIntentResponse:
         language = request.language_hint or "es"
