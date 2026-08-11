@@ -107,7 +107,8 @@ cases:
     input: "Precios"
     expected:
       - tool_call: kb_search
-      - mentions: ["Plan 1", "$229", "Plan 3", "$559", "Plan 5", "$789"]
+      - mentions: ["INMUNONUTRICIÓN", "$249", "NUTRICIÓN", "$149"]
+      - does_not_mention: ["$229"]
       - does_not_ask_clarifying_question: true
       - handoff: false
 

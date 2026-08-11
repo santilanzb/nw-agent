@@ -1,27 +1,41 @@
 # Planes de Consulta
 
-## Plan 1 Consulta (Básico) — $229 USD
+Hay dos líneas de planes vigentes. Se diferencian por quién atiende la consulta:
+**PLAN INMUNONUTRICIÓN** lo dan los especialistas; **PLAN NUTRICIÓN** lo da el equipo de
+nutricionistas (antes llamadas "acompañantes").
 
-- **Duración**: 1 mes
-- **Sesiones**: 1 consulta de 90 minutos
-- **Incluye**:
-  - 1 sesión con Embajador en Inmunonutrición
-  - Evaluación de historia clínico/nutricional
-  - Informe detallado con plan de acción
-  - Plan de alimentación general
-  - Cuestionario de salud para medir progreso
-  - Guía del Protocolo 3R
-  - Recomendación de exámenes especializados
-  - Recomendación de suplementos
+Los exámenes se recomiendan dentro del plan y **no están incluidos en el precio**.
 
-**Ideal para**: Diagnóstico inicial, dirección clara, plan de acción inmediato.
+## PLAN INMUNONUTRICIÓN — con los especialistas
 
-## Plan 3 Consultas (Más Recomendado) — $559 USD
+| Plan | Precio |
+|---|---|
+| 1 consulta | $249 USD |
+| 2 consultas | $399 USD |
+| 4 consultas | $599 USD |
+| 6 consultas | $799 USD |
+
+Incluye evaluación de historia clínico/nutricional, informe con plan de acción, plan de
+alimentación, cuestionario de salud para medir progreso, guía del Protocolo 3R y recomendación de
+exámenes especializados y suplementos.
+
+## PLAN NUTRICIÓN — con el equipo de nutricionistas
+
+| Plan | Precio |
+|---|---|
+| 1 consulta | $149 USD |
+| 2 consultas | $279 USD |
+| 3 consultas | $329 USD |
+| 5 consultas | $450 USD |
+
+## Planes de acompañamiento extendido (vigentes)
+
+### Plan 3 Consultas — $559 USD
 
 - **Duración**: 3 meses
 - **Sesiones**: 3 consultas (90 min + 60 min + 90 min) — efectivamente 2 consultas + 1 control
 - **Costo por consulta**: $186
-- **Incluye todo lo del Plan 1, más**:
+- **Incluye la evaluación y el plan de acción, más**:
   - Acompañamiento de dos embajadoras
   - Plan nutricional completamente personalizado
   - Emails semanales
@@ -37,7 +51,7 @@
 
 **Ideal para**: Remover síntomas de raíz con seguimiento.
 
-## Plan 5 Consultas (Premium) — $789 USD
+### Plan 5 Consultas — $789 USD
 
 - **Duración**: 5 meses
 - **Sesiones**: 5 consultas (90 + 60 + 90 + 90 + 60 min)

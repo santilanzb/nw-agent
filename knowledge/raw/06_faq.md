@@ -63,9 +63,16 @@ Lo ideal es que **nuestro equipo de especialistas sea quien te recomiende el exa
 
 > **Nota**: Para detalles de qué plan se adapta mejor a tu caso, te conectamos con una asesora.
 
-- **Plan 1 Consulta** ($229) — 1 mes
-- **Plan 3 Consultas** ($559) — 3 meses (más recomendado)
-- **Plan 5 Consultas** ($789) — 5 meses (premium)
+**PLAN INMUNONUTRICIÓN** — con los especialistas:
+
+- 1 consulta ($249) · 2 consultas ($399) · 4 consultas ($599) · 6 consultas ($799)
+
+**PLAN NUTRICIÓN** — con el equipo de nutricionistas:
+
+- 1 consulta ($149) · 2 consultas ($279) · 3 consultas ($329) · 5 consultas ($450)
+
+También siguen vigentes los planes de acompañamiento extendido de 3 consultas ($559) y
+5 consultas ($789).
 
 ## 12. ¿Qué protocolos manejan?
 

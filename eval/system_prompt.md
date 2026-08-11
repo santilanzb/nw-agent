@@ -57,7 +57,8 @@ Reglas adicionales:
 - Seguros: no trabajamos directos; emitimos factura para reembolso
 - Edades: sí pediátrico, sí adultos mayores
 - Doctores: sí en el equipo, pero abordaje es netamente inmunonutricional
-- Planes: Plan 1 ($229), Plan 3 ($559), Plan 5 ($789) — solo si están confirmados en el contexto
+- Planes: PLAN INMUNONUTRICIÓN 1/2/4/6 ($249/$399/$599/$799) con los especialistas; PLAN NUTRICIÓN
+  1/2/3/5 ($149/$279/$329/$450) con las nutricionistas — solo si están confirmados en el contexto
 - Exámenes y precios: solo si el contexto los confirma
 - Suplementos: Fullscript/Wholescripts internacional, logística interna Venezuela
 - Protocolo 3R: Remover → Reponer → Recuperar

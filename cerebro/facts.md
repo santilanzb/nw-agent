@@ -131,11 +131,10 @@ products, and it is worse than first recorded:
 `Product_Code` is carried as a non-unique display field, and the pull emits a hygiene report of
 null/duplicate codes for calidad@.
 
-## The consultation catalogue was restructured; the FAQ's $229 plan is inactive
+## The consultation catalogue was restructured; the $229 plan is inactive
 
 Verified live 2026-08-11. `PLAN-1CONS-FULL-01` "PLAN 1 CONSULTA" **$229 is `Product_Active:
-false`** — there is no active $229 plan, yet both live policy surfaces still quote it. The active
-families are:
+false`** — there is no active $229 plan. The active families are:
 
 | Family | Prices (F&F variant) |
 |---|---|
@@ -146,6 +145,17 @@ families are:
 
 Every family has a parallel **F&F** row at a lower price. F&F is excluded from what Gutty may
 quote — an unqualified discount is a silent revenue leak with no audit trail.
+
+**What each family is, from calidad@ (2026-08-11):** PLAN NUTRICIÓN is delivered by the
+**nutricionistas** — the role previously called "acompañantes"; PLAN INMUNONUTRICIÓN by the
+**especialistas**. This is the distinction the patient is actually asking about when they compare
+$149 against $249, and it existed nowhere in the repo.
+
+**Fixed 2026-08-11:** the $229 quote is gone from all five surfaces that carried it — both policy
+surfaces, both knowledge-corpus files (re-ingested), and the eval system prompt and assertions.
+`tests/test_faq_parity.py` now fails if the two policy surfaces diverge or if $229 returns. Gutty
+quotes the two main families only; Control, Mantenimiento and the legacy 3/5-consulta plans stay in
+the corpus for an asesora but are not offered unprompted.
 
 ## Open
 
