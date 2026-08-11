@@ -4,12 +4,12 @@ import asyncio
 import uuid
 
 from company_agent.agent_core.models import ClassificationResult, TurnContext
-from company_agent.agent_core.tasks.customer_service import (
+from company_agent.packages.customer_service.policy import (
     CANNED_FAREWELL,
     CANNED_GREETING,
     DIRECT_FAQ_REPLIES,
-    CustomerServiceTask,
 )
+from company_agent.packages.customer_service.task import CustomerServiceTask
 
 
 class _ExplodingLLM:

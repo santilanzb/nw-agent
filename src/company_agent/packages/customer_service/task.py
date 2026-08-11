@@ -2,113 +2,52 @@ from __future__ import annotations
 
 import logging
 
-from ..llm.anthropic import LLMClient
-from ..llm.composition import (
+from company_agent.agent_core.llm.anthropic import LLMClient
+from company_agent.agent_core.llm.composition import (
     CLARIFY_SYSTEM,
     FALLBACK_SYSTEM,
     build_clarify_prompt,
     build_fallback_prompt,
 )
-from ..models import HandoffArgs, TaskResult, TurnContext
+from company_agent.agent_core.models import HandoffArgs, TaskResult, TurnContext
+
+from .policy import (
+    CANNED_FAREWELL,
+    CANNED_GREETING,
+    CLARIFY_FAILED_REPLY,
+    COMPOSE_FAILED_REPLY,
+    DIRECT_FAQ_REPLIES,
+    FAREWELL_INTENTS,
+    GREETING_INTENTS,
+    HANDOFF_ENGLISH_PHRASE,
+    HANDOFF_INTENTS,
+    HANDOFF_PHRASE,
+)
 
 logger = logging.getLogger(__name__)
 
-# Hardcoded canonical FAQ replies (mirrors the OpenClaw plugin DIRECT_FAQ_REPLIES)
-DIRECT_FAQ_REPLIES: dict[str, str] = {
-    "faq_location": (
-        "¡Hola! NutriWhite está en Caracas, Venezuela 📍\n\n"
-        "Nos encontramos en Alta Florida, Avenida Los Mangos, "
-        "Centro Deportivo Caracas MultiSport, Piso 1.\n\n"
-        "También ofrecemos consultas 100% online, así que puedes atenderte desde donde estés. "
-        "¿Te gustaría conocer nuestros planes?"
-    ),
-    "faq_services": (
-        "En NutriWhite te ofrecemos todo lo que necesitas para mejorar tu salud de forma integral 🌿\n\n"
-        "✅ Consultas de inmunonutrición y nutrición\n"
-        "✅ Exámenes especializados\n"
-        "✅ Suplementos específicos según tu caso y ubicación\n"
-        "✅ Protocolo 3R de acompañamiento\n"
-        "✅ Evaluación gratuita de salud\n"
-        "✅ Llamada informativa gratis de 15 minutos\n\n"
-        "Para suplementos fuera de Venezuela trabajamos con Fullscript y Wholescripts; "
-        "en Venezuela lo coordina nuestro equipo de logística. "
-        "¿Quieres conocer nuestros planes de consulta?"
-    ),
-    "faq_consultation_plans": (
-        "Tenemos dos líneas de planes para acompañarte 💙\n\n"
-        "*PLAN INMUNONUTRICIÓN* — con nuestros especialistas\n"
-        "• 1 consulta — $249 USD\n"
-        "• 2 consultas — $399 USD\n"
-        "• 4 consultas — $599 USD\n"
-        "• 6 consultas — $799 USD\n\n"
-        "*PLAN NUTRICIÓN* — con nuestro equipo de nutricionistas\n"
-        "• 1 consulta — $149 USD\n"
-        "• 2 consultas — $279 USD\n"
-        "• 3 consultas — $329 USD\n"
-        "• 5 consultas — $450 USD\n\n"
-        "Los exámenes se recomiendan dentro del plan y no están incluidos en el precio. "
-        "Las cuotas son solo con TDC y tienen 3% de comisión bancaria.\n\n"
-        "¿Te agendo tu llamada gratuita de 15 minutos para ver cuál se adapta mejor a tu caso?"
-    ),
-    "faq_payment_methods": (
-        "Aceptamos varias formas de pago para tu comodidad 💳\n\n"
-        "• PayPal\n• Zelle\n• Tarjeta de crédito (TDC)\n• Efectivo\n• Pago móvil (Venezuela)\n\n"
-        "Las cuotas están disponibles solo con TDC y se añade un 3% de comisión bancaria.\n\n"
-        "NutriWhite no trabaja directamente con seguros, pero podemos emitir factura para que "
-        "gestiones el reembolso con tu corredor si tu seguro cubre nutrición. "
-        "¿Tienes alguna otra pregunta?"
-    ),
-}
-
-HANDOFF_INTENTS = frozenset({
-    "handoff_specialist_recommendation",
-    "handoff_scheduling",
-    "handoff_discount",
-    "handoff_medical_advice",
-    "handoff_refund",
-    "handoff_post_payment_logistics",
-    "handoff_english",
-    "handoff_distress",
-})
-
-HANDOFF_PHRASE = (
-    "Para esto te conecto con una asesora que te dará la mejor recomendación "
-    "según tu caso 🩵 Un momento por favor."
-)
-HANDOFF_ENGLISH_PHRASE = "Let me connect you with a colleague who'll attend you in English 🩵"
-
-GREETING_INTENTS = frozenset({"greeting"})
-FAREWELL_INTENTS = frozenset({"farewell"})
-
-# Greetings and farewells are the highest-volume intents in the whole product and
-# there is nothing for a model to decide in them. Composing them burned an LLM
-# call per "hola" and added latency to the first impression.
-CANNED_GREETING = "¡Hola! 🩵 Soy Gutty, de NutriWhite. ¿En qué te puedo ayudar hoy?"
-CANNED_FAREWELL = "¡Hasta pronto! 🩵 Cuídate mucho."
-
 
 class CustomerServiceTask:
-    name = "customer_service"
-    handled_intents = frozenset(
-        set(DIRECT_FAQ_REPLIES)
-        | HANDOFF_INTENTS
-        | GREETING_INTENTS
-        | FAREWELL_INTENTS
-        | {
-            "faq_consultation_call",
-            "faq_protocol_3r",
-            "faq_supplements_general",
-            "faq_exams_general",
-            "patient_plan_status",
-            "patient_appointment_status",
-            "patient_exam_status",
-            "acknowledgment",
-            "unknown",
-        }
-    )
+    """
+    The patient-facing turn handler: deterministic FAQ, handoff, LLM fallback.
 
-    def __init__(self, llm: LLMClient) -> None:
+    `handled_intents` is **injected, not declared**. It used to be a
+    hand-maintained frozenset of 22 names whose only job was to equal the keys of
+    a YAML file in another directory, with nothing asserting they matched. The
+    registrar now derives it from this package's own `seeds.yaml` plus the
+    manifest's `synthetic_intents`, which removes the drift class rather than
+    detecting it.
+
+    The default is empty so the class stays constructible in isolation — several
+    tests build it directly to assert gate behaviour, and those tests are about
+    what `handle()` does with a classification, not about who claims what.
+    """
+
+    name = "customer_service"
+
+    def __init__(self, llm: LLMClient, *, handled_intents: frozenset[str] = frozenset()) -> None:
         self._llm = llm
+        self.handled_intents = handled_intents
 
     async def handle(self, ctx: TurnContext) -> TaskResult:
         cls = ctx.classification
@@ -167,9 +106,7 @@ class CustomerServiceTask:
                 )
             except Exception as exc:  # noqa: BLE001 - any model failure degrades to canned
                 logger.error("clarify compose failed: %s", exc)
-                return TaskResult.canned(
-                    "¿Me puedes dar más detalles sobre lo que necesitas? 🩵"
-                )
+                return TaskResult.canned(CLARIFY_FAILED_REPLY)
 
         # ── 5. Greeting / farewell — canned, no model call ────────────────────
         if intent in GREETING_INTENTS:
@@ -203,9 +140,7 @@ class CustomerServiceTask:
             )
         except Exception as exc:  # noqa: BLE001 - any model failure degrades to canned
             logger.error("fallback compose failed: %s", exc)
-            return TaskResult.canned(
-                "Tengo un problema técnico, ya te conecto con una asesora 🩵"
-            )
+            return TaskResult.canned(COMPOSE_FAILED_REPLY)
 
     def _build_team_notification(self, ctx: TurnContext, reason: str) -> str:
         label = ctx.sender_name or ctx.phone

@@ -100,7 +100,7 @@ def _turn(stack, text: str, phone: str | None = None) -> tuple[str, str, list]:
 # ── Deterministic answers, no model involved ─────────────────────────────────
 
 def test_greeting_answers_from_the_canned_string(stack) -> None:
-    from company_agent.agent_core.tasks.customer_service import CANNED_GREETING
+    from company_agent.packages.customer_service.policy import CANNED_GREETING
 
     phone, _, sent = _turn(stack, "hola buenas tardes")
 
@@ -111,7 +111,7 @@ def test_greeting_answers_from_the_canned_string(stack) -> None:
 
 
 def test_location_question_answers_from_the_faq_dict(stack) -> None:
-    from company_agent.agent_core.tasks.customer_service import DIRECT_FAQ_REPLIES
+    from company_agent.packages.customer_service.policy import DIRECT_FAQ_REPLIES
 
     _, _, sent = _turn(stack, "hola, dónde quedan ustedes?")
 
@@ -154,7 +154,7 @@ def test_turn_is_logged_with_the_classified_intent(stack) -> None:
 # ── Handoff ───────────────────────────────────────────────────────────────────
 
 def test_medical_question_escalates_and_leaks_no_patient_text(stack) -> None:
-    from company_agent.agent_core.tasks.customer_service import HANDOFF_PHRASE
+    from company_agent.packages.customer_service.policy import HANDOFF_PHRASE
 
     secret = "me arde el estómago desde hace tres semanas"
     phone, _, sent = _turn(stack, secret)

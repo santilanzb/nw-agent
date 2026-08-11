@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from company_agent.agent_core.tasks.customer_service import DIRECT_FAQ_REPLIES
+from company_agent.packages.customer_service.policy import DIRECT_FAQ_REPLIES
 
 PLUGIN = Path(__file__).resolve().parents[1] / "openclaw" / "plugins" / "customer-service-tools" / "index.js"
 

@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from company_agent.common.db import make_async_pool
+from company_agent.packages.registrar import install_packages
 
 from .brain.turn_log import TurnLogWriter
 from .config import AgentCoreSettings
@@ -23,7 +24,6 @@ from .outbox.sender import SendOutbox
 from .routing.classifier_client import ClassifierClient
 from .routing.handoff_client import HandoffClient
 from .tasks.base import TaskRegistry
-from .tasks.customer_service import CustomerServiceTask
 from .tasks.fallback import FallbackTask
 from .transport.base import InboundEvent, Transport
 from .transport.waha import WahaTransport
@@ -86,8 +86,11 @@ llm = LLMClient(
     langfuse_host=settings.langfuse_host,
 )
 
+# Tasks arrive as function packages: one directory each, discovered and
+# registered here. Adding a capability means adding a directory — this line
+# never changes again.
 registry = TaskRegistry()
-registry.register(CustomerServiceTask(llm=llm))
+installed_packages = install_packages(registry, llm=llm)
 registry.set_fallback(FallbackTask())
 
 turn_log = TurnLogWriter(database_url=settings.database_url)
