@@ -23,8 +23,14 @@ docker compose up -d
 # Ingest knowledge from knowledge/raw/ into Postgres (one-shot)
 docker compose run --rm ingest-worker python -m company_agent.ingest_worker.main sync
 
-# Seed intent vectors from intents/intent_seeds.yaml into Postgres (one-shot; --reset for full re-seed)
+# Seed intent vectors from the installed function packages into Postgres (one-shot).
+# --reset re-embeds everything; --no-prune keeps classes no package claims;
+# --force allows a prune that would drop more than half the existing classes.
+# NOTE: seeds ship inside the package, so editing them needs an image rebuild.
 docker compose run --rm ingest-worker python -m company_agent.intent_seeder.main sync
+
+# Make rag-api re-read the dispatch table from intent_vectors, with no restart
+curl -X POST http://localhost:8081/v1/admin/reload_dispatch -H "X-Internal-API-Key: $INTERNAL_API_KEY"
 
 # Tests (pytest, src/ on pythonpath via pyproject.toml)
 pip install -e ".[dev]"
@@ -72,12 +78,52 @@ Both runtimes (OpenClaw and agent-core) route every patient turn through a singl
 
 The pipeline:
 
-1. **`intents/intent_seeds.yaml`** — source of truth. ~10 Spanish example phrases per `intent_class`, each with a `dispatch.tool` (the first tool to call for that intent; `null` for conversational intents) and `dispatch.params`. Edit wording here, not in the DB.
-2. **[intent_seeder](src/company_agent/intent_seeder/main.py)** — one-shot CLI (like ingest-worker). Embeds each example (OpenAI 1536-dim) and upserts into the `intent_vectors` table on `(intent_class, example_text, language)`. All seeds go into the `es` bucket. Re-run after editing the YAML; use `--reset` for a full wipe-and-reseed.
+1. **`src/company_agent/packages/<name>/seeds.yaml`** — authoring source of truth. ~10 Spanish example phrases per `intent_class`, each with a `dispatch.tool` (the first tool to call for that intent; `null` for conversational intents) and `dispatch.params`. Edit wording here, not in the DB.
+2. **[intent_seeder](src/company_agent/intent_seeder/main.py)** — one-shot CLI (like ingest-worker). Merges the seed fragments of every installed package, embeds each example (OpenAI 1536-dim) and upserts into `intent_vectors` on `(intent_class, example_text, language)`, storing the intent's `dispatch` in the row's `metadata`. All seeds go into the `es` bucket. It also **prunes** classes no package claims — orphans still match the cosine-NN query, which has no class filter — but it **refuses to prune** when the merge is empty (that means discovery failed, not that intents were removed) or when the prune would drop more than half the existing classes without `--force`.
 3. **rag-api `/v1/classify_intent`** ([intent.py](src/company_agent/rag_api/intent.py)) — embeds the inbound message, does cosine-NN against `intent_vectors`, and returns `intent` + `confidence` + a `decision` of `execute` / `clarify` / `fallback_llm`. Thresholds (`intent_threshold_execute`, `intent_threshold_clarify`, `intent_tiebreak_margin`) come from `RagSettings`/`.env`. Tie-break logic downgrades `execute`→`clarify` when the top-2 intents are within the margin. If embeddings are disabled, it always returns `fallback_llm` (so lexical-only deployments degrade to the LLM, not a crash).
 4. **Consumers:** the OpenClaw plugin's `classify_intent` tool ([index.js](openclaw/plugins/customer-service-tools/index.js)) and agent-core's [classifier_client.py](src/company_agent/agent_core/routing/classifier_client.py) both POST to the same endpoint. agent-core's client retries once before raising; on failure the FSM falls through to the LLM.
 
-The `dispatch` table in the response is loaded from the same `intent_seeds.yaml` at rag-api startup — so the YAML drives both *which intent matches* (via the embedded examples) and *what to do about it* (via `dispatch`).
+**The dispatch table's runtime source is Postgres, not the YAML.** rag-api builds it from
+`intent_vectors.metadata` in its lifespan, and `POST /v1/admin/reload_dispatch` rebuilds it without
+a restart. The seeder writes vectors and dispatch in one transaction, so the two cannot disagree —
+which they could before, when the seeder read a bind-mounted YAML and rag-api read the copy baked
+into its image. The YAML remains where you *author*; the database is what the classifier *serves*.
+
+## Function packages — how a capability is added
+
+A capability is one directory under `src/company_agent/packages/`, never an edit to a central
+dispatch table. `customer_service` is the first and proves the contract.
+
+```
+packages/customer_service/
+  manifest.yaml    # Pydantic-validated; unknown keys are an error, not a no-op
+  seeds.yaml       # this package's intents, examples and dispatch
+  task.py          # the TaskModule; imports the LLM client
+  policy.py        # the copy a patient reads — imports nothing
+  evals/           # intent cases, loaded by `run_eval --mode intent`
+```
+
+Three rules the code enforces, each because its absence already caused a real failure:
+
+- **`handled_intents` is derived, never declared.** The registrar computes it from the package's
+  own `seeds.yaml` plus the manifest's `synthetic_intents`. It used to be a hand-maintained
+  frozenset of 22 names whose only job was to equal the keys of a YAML file in another directory.
+- **Discovery never imports a task module.** `packages/registry.py` reads YAML only, so rag-api and
+  the seeder can merge seeds without pulling in the Anthropic client that `task.py` imports.
+  `packages/registrar.py` is the sole module allowed to import a task, and only agent-core calls it.
+  Enforced by a subprocess test — in-process `sys.modules` assertions depend on collection order.
+- **Package data must be declared** in `[tool.setuptools.package-data]`, or `pip install .` drops
+  the YAML and nothing on the host notices: pytest reads the source tree via `pythonpath`, so a
+  broken wheel still passes every test here and only fails inside the container.
+
+`synthetic_intents` is for classes the runtime emits but never classifies. `unknown` is the only one
+today — the FSM emits it when the classifier call raises, rag-api when embeddings are off. It must
+not be seeded, and exactly one package may claim it.
+
+agent-core checks at boot that the declared, claimed and seeded sets agree. Manifest-vs-task
+disagreement is **fatal** (same build, same repo — nothing explains it); database disagreement is
+**loud but not fatal** (re-run the seeder; refusing to boot would turn a stale classifier into an
+outage). `GET /admin/tasks` returns the live report.
 
 ## Zoho CRM module mapping
 
@@ -168,7 +214,6 @@ src/company_agent/agent_core/
     handoff_client.py     # check_active (raises — see below), create_handoff, resume, claim
   tasks/
     base.py               # TaskModule Protocol + explicit-claim TaskRegistry
-    customer_service.py   # deterministic FAQ, handoff, LLM fallback
     fallback.py           # unclaimed intents → loud log + human escalation
   brain/
     turn_log.py           # TurnLogWriter (phone SHA-256 hashed)
@@ -176,6 +221,10 @@ src/company_agent/agent_core/
     anthropic.py          # LLMClient with Langfuse tracing (trace_id = turn_id)
     composition.py        # Spanish system prompts + prompt builders
 ```
+
+Task modules themselves live in `src/company_agent/packages/`, not here — see *Function packages*
+above. `tasks/base.py` and `tasks/fallback.py` stay: the registry is agent-core's, and the fallback
+handler is its terminal case, not a capability.
 
 ### The durability rules — these are load-bearing, don't undo them
 
@@ -267,8 +316,8 @@ The [openclaw/hooks/nw-message-journal](openclaw/hooks/nw-message-journal/) hook
 
 [eval/run_eval.py](eval/run_eval.py) has two modes:
 
-- **`--mode generation`** (default) — loads cases from `seeds.yaml`, runs them against each model in `MODEL_REGISTRY` (Anthropic/OpenAI/Google SDKs), writes JSONL to `eval/results/<timestamp>/<model>.jsonl`. **No tool calls** — evaluates raw response quality (Spanish naturalness, persona match, whether the model says it would hand off, hallucination).
-- **`--mode intent`** — tool-correctness: hits rag-api `/v1/classify_intent` for each case and asserts the returned intent matches `expected_intent`. This is how the classifier's accuracy is measured (the docs cite ~99% on the seed set).
+- **`--mode generation`** (default) — loads cases from `eval/seeds.yaml`, runs them against each model in `MODEL_REGISTRY` (Anthropic/OpenAI/Google SDKs), writes JSONL to `eval/results/<timestamp>/<model>.jsonl`. **No tool calls** — evaluates raw response quality (Spanish naturalness, persona match, whether the model says it would hand off, hallucination).
+- **`--mode intent`** — tool-correctness: hits rag-api `/v1/classify_intent` for each case and asserts the returned intent matches `expected_intent`. Cases are collected from each installed package's `evals/` directory, so a package cannot ship without them. Measured 110/110 on 2026-08-11.
 
 Results dir is gitignored. The harness loads `.env` itself with a custom path resolver (it does NOT use `python-dotenv`).
 
