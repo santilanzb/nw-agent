@@ -55,6 +55,16 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# Function packages ship YAML alongside their Python. `pip install .` drops
+# non-.py files without this, and nothing on the host would notice: pytest reads
+# the source tree via `pythonpath = ["src"]`, so a broken wheel still passes every
+# test here and only fails inside the container.
+#
+# Keyed on "*" rather than per-package on purpose — adding a package must not
+# require editing this file, or "drop in a directory" stops being true.
+[tool.setuptools.package-data]
+"*" = ["manifest.yaml", "seeds.yaml", "evals/*.yaml"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 
