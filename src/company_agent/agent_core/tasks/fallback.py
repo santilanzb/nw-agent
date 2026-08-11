@@ -17,7 +17,7 @@ class FallbackTask:
     Terminal handler for intents no package claimed.
 
     Reaching this is a configuration defect — an intent exists in
-    intents/intent_seeds.yaml that no task module declares. The registry already
+    a package's seeds.yaml that no task module declares. The registry already
     logged it; this module makes sure the patient is not left unanswered while the
     defect is fixed, by escalating to a human instead of guessing.
     """

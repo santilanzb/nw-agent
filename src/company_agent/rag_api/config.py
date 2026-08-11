@@ -26,7 +26,6 @@ class RagSettings(BaseSettings):
     intent_threshold_execute: float = Field(default=0.80, alias="INTENT_THRESHOLD_EXECUTE")
     intent_threshold_clarify: float = Field(default=0.55, alias="INTENT_THRESHOLD_CLARIFY")
     intent_tiebreak_margin: float = Field(default=0.05, alias="INTENT_TIEBREAK_MARGIN")
-    intent_seeds_path: str = Field(
-        default="intents/intent_seeds.yaml",
-        alias="INTENT_SEEDS_PATH",
-    )
+    # No INTENT_SEEDS_PATH: seeds are discovered from the installed function
+    # packages, not from a configurable path. A path that could be wrong was a
+    # path that silently produced an empty dispatch table.

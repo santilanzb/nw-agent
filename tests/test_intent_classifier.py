@@ -10,15 +10,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from company_agent.rag_api.config import RagSettings
-from company_agent.rag_api.intent import IntentClassifier
+from company_agent.rag_api.intent import IntentClassifier, load_dispatch_table
 from company_agent.rag_api.schemas import ClassifyIntentRequest
 
 
 def _settings(**overrides) -> RagSettings:
-    base = {
-        "INTERNAL_API_KEY": "test",
-        "INTENT_SEEDS_PATH": "intents/intent_seeds.yaml",
-    }
+    base = {"INTERNAL_API_KEY": "test"}
     base.update(overrides)
     return RagSettings(**base)
 
@@ -33,7 +30,13 @@ def _make_embedding_client(enabled: bool = True) -> MagicMock:
 def _make_classifier(settings: RagSettings | None = None, enabled: bool = True) -> IntentClassifier:
     s = settings or _settings()
     embeddings = _make_embedding_client(enabled=enabled)
-    return IntentClassifier(settings=s, embeddings=embeddings)
+    # The dispatch table comes from the installed function packages. Passing it
+    # explicitly keeps these tests about decision logic while still exercising
+    # the real seeds, so an assertion like "faq_location dispatches to
+    # faq_location" continues to mean what it did before the package move.
+    return IntentClassifier(
+        settings=s, embeddings=embeddings, dispatch_table=load_dispatch_table()
+    )
 
 
 def _fake_rows(scores: list[tuple[str, float, str]]) -> list[dict]:

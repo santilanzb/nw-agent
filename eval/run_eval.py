@@ -19,6 +19,7 @@ import time
 import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -97,8 +98,24 @@ def load_cases() -> list[EvalCase]:
 
 
 def load_intent_cases() -> list[IntentCase]:
-    raw = yaml.safe_load((EVAL_DIR / "intent_eval.yaml").read_text(encoding="utf-8"))
-    return [IntentCase(**case) for case in raw["cases"]]
+    """
+    Intent cases ship inside the function package that owns the intents, so a
+    package cannot be installed without its evals. Cases from every installed
+    package are concatenated.
+    """
+    from company_agent.packages.registry import discover_manifests
+
+    cases: list[IntentCase] = []
+    for package in discover_manifests():
+        if package.manifest.evals is None:
+            continue
+        evals_dir = files("company_agent.packages") / package.name / package.manifest.evals
+        for entry in sorted(evals_dir.iterdir(), key=lambda e: e.name):
+            if not entry.name.endswith(".yaml"):
+                continue
+            raw = yaml.safe_load(entry.read_text(encoding="utf-8"))
+            cases.extend(IntentCase(**case) for case in raw.get("cases") or [])
+    return cases
 
 
 def load_system_prompt() -> str:

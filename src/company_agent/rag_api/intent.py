@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Literal
-
-import yaml
 
 from company_agent.common.db import connect, vector_literal
 from company_agent.common.embeddings import EmbeddingClient
+from company_agent.packages.registry import discover_manifests, merge_seeds
 
 from .config import RagSettings
 from .schemas import (
@@ -29,26 +27,36 @@ LIMIT %(top_k)s
 """
 
 
-def _load_dispatch_table(seeds_path: str) -> dict[str, IntentDispatch]:
-    path = Path(seeds_path)
-    if not path.exists():
-        return {}
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    table: dict[str, IntentDispatch] = {}
-    for intent_class, data in raw.get("intents", {}).items():
-        dispatch = data.get("dispatch", {})
-        table[intent_class] = IntentDispatch(
-            tool=dispatch.get("tool"),
-            params=dispatch.get("params", {}),
+def load_dispatch_table() -> dict[str, IntentDispatch]:
+    """
+    Build the dispatch table from the installed function packages.
+
+    This used to read a single YAML path and return `{}` when the file was
+    missing — so a mis-pathed config produced a classifier that classified
+    correctly and dispatched nothing, silently. Discovery now raises instead.
+    """
+    merged = merge_seeds(discover_manifests())
+    return {
+        intent_class: IntentDispatch(
+            tool=intent.dispatch.tool,
+            params=intent.dispatch.params,
         )
-    return table
+        for intent_class, intent in merged.items()
+    }
 
 
 class IntentClassifier:
-    def __init__(self, settings: RagSettings, embeddings: EmbeddingClient) -> None:
+    def __init__(
+        self,
+        settings: RagSettings,
+        embeddings: EmbeddingClient,
+        dispatch_table: dict[str, IntentDispatch] | None = None,
+    ) -> None:
         self._settings = settings
         self._embeddings = embeddings
-        self._dispatch_table = _load_dispatch_table(settings.intent_seeds_path)
+        self._dispatch_table = (
+            dispatch_table if dispatch_table is not None else load_dispatch_table()
+        )
 
     def classify(self, request: ClassifyIntentRequest) -> ClassifyIntentResponse:
         language = request.language_hint or "es"

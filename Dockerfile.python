@@ -8,9 +8,16 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY knowledge ./knowledge
-COPY intents ./intents
 
+# Intent seeds no longer live in a top-level intents/ directory — they ship
+# inside the function package that owns them, so `pip install .` carries them
+# (see [tool.setuptools.package-data]). The old layout let the seeder read a
+# bind-mounted copy while rag-api read a baked one, and the two could disagree.
 RUN pip install --no-cache-dir .
+
+# The source tree is still present at /app/src. Nothing should import from it —
+# an accidental sys.path entry there would mask a broken package-data config,
+# because the YAML exists in src/ whether or not the wheel carries it.
 
 CMD ["uvicorn", "company_agent.rag_api.main:app", "--host", "0.0.0.0", "--port", "8081"]
 

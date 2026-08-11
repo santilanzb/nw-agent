@@ -30,7 +30,7 @@ class TaskRegistry:
 
     The previous first-match-wins lookup made every unclaimed intent land silently
     in whichever module registered first (in practice customer_service), so a
-    typo in intent_seeds.yaml looked like working software. Collisions are now a
+    typo in a package's seeds.yaml looked like working software. Collisions are now a
     startup error and unclaimed intents go to a fallback that logs loudly.
     """
 
@@ -68,7 +68,7 @@ class TaskRegistry:
 
         logger.error(
             "unclaimed_intent intent=%s fallback=%s — either add it to a package's "
-            "handled_intents or drop it from intents/intent_seeds.yaml",
+            "handled_intents or drop it from that package's seeds.yaml",
             intent,
             self._fallback.name,
         )

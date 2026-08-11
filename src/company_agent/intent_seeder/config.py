@@ -17,7 +17,4 @@ class IntentSeederSettings(BaseSettings):
         default="text-embedding-3-small",
         alias="OPENAI_EMBEDDING_MODEL",
     )
-    intent_seeds_path: str = Field(
-        default="intents/intent_seeds.yaml",
-        alias="INTENT_SEEDS_PATH",
-    )
+    # No INTENT_SEEDS_PATH: seeds come from the installed function packages.

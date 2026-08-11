@@ -1,0 +1,45 @@
+# The customer_service function package.
+#
+# Validated by packages/manifest.py at discovery. Unknown keys are an error, not
+# a no-op — if you add a field here it must exist in PackageManifest first.
+
+name: customer_service
+version: 1.0.0
+description: Patient-facing customer service — FAQ, handoff to an asesora, and LLM fallback.
+
+# Resolved by packages/registrar.py only. Discovery validates the SHAPE of this
+# string and never imports it, so that rag-api and the intent seeder can read
+# this manifest without loading the Anthropic client.
+task: company_agent.packages.customer_service.task:CustomerServiceTask
+
+# Written to turn_log.task. Changing it silently re-labels history, and
+# tests/test_fsm_integration.py asserts the literal.
+task_name: customer_service
+
+seeds: seeds.yaml
+evals: evals
+
+# Intent classes this package claims that are never seeded.
+#
+# `unknown` is synthesised, not classified: the FSM emits it when the classifier
+# call raises, and rag-api returns it when embeddings are disabled. Declaring it
+# here is what makes single ownership enforceable — a second package declaring it
+# fails at startup via the registry's existing collision check.
+#
+# Consequence, accepted deliberately: a classifier outage routes every turn to
+# this package's LLM fallback rather than to a human. That is the better answer
+# for the patient, but it makes "classifier down" invisible to the handoff queue.
+# Count it; do not reroute it.
+synthetic_intents:
+  - unknown
+
+# Nothing reads these yet — there is no CrmWriteGate and no budget governor.
+# They are declared because `extra="forbid"` makes adding a manifest field later
+# a breaking change for every package, and there is exactly one package today.
+write_actions:
+  - action: create_handoff_note
+    autonomy: shadow
+
+cost_budget:
+  monthly_usd: 60.0
+  per_turn_usd: 0.02
