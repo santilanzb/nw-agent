@@ -73,6 +73,34 @@ fold accents. The field is `system_mandatory:false`, `api_create`/`api_update:tr
 only reads were run, so treat this as the safe write inventory, not a proven rejection boundary.
 Any CRM admin can change the set in the UI — re-read `getFields` before trusting it in new code.
 
+## Leads keep their phone in a CUSTOM field; `Phone` and `Mobile` are empty
+
+Verified live 2026-08-11. On api `Leads` (labelled **"Contactos"**), the standard
+`Phone` and `Mobile` fields return **nothing at all** — `where Phone is not null` and
+`where Mobile is not null` both come back empty across the module. The number lives in:
+
+> **`Tel_fono_con_c_digo_de_pa_s1`** — label "Teléfono (con código de país)", type `phone`
+
+api `Contacts` (**"Comunidad NW"**, the patients) *does* use the standard `Phone`.
+
+**The failure mode is silence, and it hit the most common case.** Looking a WhatsApp number
+up only in `Contacts.Phone` — which is all `find_contact_by_phone` did — finds existing patients
+and misses every inbound **lead**, i.e. most new traffic: no name, no history, and a handoff with
+no CRM record to attach to. `ZohoClient.find_by_phone` now tries `Contacts` first (a patient is
+the stronger match, carrying plan, specialist and consultation history) and falls back to `Leads`.
+
+Two related traps:
+
+- **Stored formats are inconsistent** — `+58 4241568769`, `+584123138118`, `6692771132`,
+  `528124319415`. Matching is a last-9-digit `LIKE` on normalized digits for exactly this reason.
+- **A Note must name the module its parent lives in.** `$se_module: "Contacts"` cannot attach to a
+  Lead, so a lead's handoff would silently lose its CRM trail. `create_note(..., module=...)` takes
+  it, allowlisted.
+
+*Also verified:* COQL's default universe **excludes converted leads**, which is the behaviour we
+want here — a converted lead has a Contact, and that is the better match. (See the master-brain
+note on the same default hiding 3,536 converted leads from a count.)
+
 ## COQL escapes a single quote by DOUBLING it, and has no bind parameters
 
 Verified live 2026-08-11:

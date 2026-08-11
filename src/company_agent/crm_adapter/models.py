@@ -21,17 +21,30 @@ class CustomerLookupRequest(BaseModel):
 
 
 class PatientProfile(BaseModel):
-    """Slimmed-down Contact record safe to expose to the agent."""
+    """
+    Slimmed-down CRM record safe to expose to the agent.
+
+    Sourced from one of two modules, and the caller needs to know which — the
+    fields below are mostly Contacts-only, and a Lead is not a patient. Note the
+    label inversion recorded in cerebro/facts.md: api `Contacts` is labelled
+    "Comunidad NW" (patients) and api `Leads` is labelled "Contactos".
+    """
     contact_id: str
     full_name: str
     email: str | None
     phone: str | None
-    language: str | None                # Idioma field
-    patient_status: str | None          # Estado_de_Paciente
+    language: str | None                # Idioma field            (Contacts only)
+    patient_status: str | None          # Estado_de_Paciente      (Contacts only)
     patient_type: str | None            # Paciente (Nuevo / Recurrente)
-    community_type: str | None          # Tipo_de_Comunidad
+    community_type: str | None          # Tipo_de_Comunidad       (Contacts only)
     specialist: str | None              # Especialista.name
-    consult_reason: list[str]           # Motivo_de_Consulta
+    consult_reason: list[str]           # Motivo_de_Consulta      (Contacts only)
+    source_module: str | None = None    # "Contacts" (patient) | "Leads" (not yet a patient)
+
+    @property
+    def is_patient(self) -> bool:
+        """A Lead has not become a patient yet; care-class rules differ."""
+        return self.source_module == "Contacts"
 
 
 # Backward-compat alias used by the OpenClaw plugin tool name "customer_lookup"
@@ -117,7 +130,11 @@ class HandoffRequest(BaseModel):
     conversation_id: str | None = None
     reason: str = Field(min_length=10, max_length=2000)
     priority: Priority = "high"
-    customer_id: str | None = None      # Zoho Contact record id
+    customer_id: str | None = None      # Zoho record id (Contact or Lead)
+    # Which module customer_id lives in. A Note stamped with the wrong
+    # $se_module cannot attach, so a lead's handoff would silently lose its
+    # CRM trail.
+    customer_module: Literal["Contacts", "Leads"] = "Contacts"
 
     # Richer context so the team notification + state row are useful
     contact_phone: str | None = None    # E.164, e.g. +584145610594

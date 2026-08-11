@@ -187,6 +187,28 @@ class ZohoCrmAdapter(BaseCrmAdapter):
             community_type=self._str(row.get("Tipo_de_Comunidad")),
             specialist=self._str(row.get("Especialista")),
             consult_reason=reasons,
+            source_module="Contacts",
+        )
+
+    def _to_profile_from_lead(self, row: dict) -> CustomerProfile:
+        """
+        A Lead ("Contactos" in the UI) is someone who is not a patient yet, so the
+        patient-only fields are absent rather than empty-by-accident.
+        """
+        from .zoho_client import ZohoClient
+
+        return CustomerProfile(
+            contact_id=str(row["id"]),
+            full_name=f"{row.get('First_Name', '')} {row.get('Last_Name', '')}".strip(),
+            email=self._str(row.get("Email")),
+            phone=self._str(row.get(ZohoClient.LEAD_PHONE_FIELD)),
+            language=None,
+            patient_status=None,
+            patient_type=None,
+            community_type=None,
+            specialist=self._str(row.get("Especialista")),
+            consult_reason=[],
+            source_module="Leads",
         )
 
     def _to_deal(self, row: dict) -> DealRecord:
@@ -233,11 +255,21 @@ class ZohoCrmAdapter(BaseCrmAdapter):
         customer_id: str | None,
         email: str | None,
     ) -> CustomerProfile | None:
-        row: dict | None = None
-
+        # Phone first, and across both populations. WhatsApp hands us the number
+        # on every inbound message, so it is the only identifier we never have to
+        # ask a patient for — email is an awkward thing to request mid-conversation
+        # and is kept as a last resort.
         if phone:
-            row = self._crm.find_contact_by_phone(phone)
-        if not row and customer_id:
+            found = self._crm.find_by_phone(phone)
+            if found:
+                module, row = found
+                return (
+                    self._to_profile(row) if module == "Contacts"
+                    else self._to_profile_from_lead(row)
+                )
+
+        row: dict | None = None
+        if customer_id:
             row = self._crm.find_contact_by_id(customer_id)
         if not row and email:
             row = self._crm.find_contact_by_email(email)
@@ -283,10 +315,11 @@ class ZohoCrmAdapter(BaseCrmAdapter):
                 f"Prioridad: {request.priority}\n\n"
                 f"Motivo:\n{request.reason}"
             )
-            result = self._crm.create_note_on_contact(
-                contact_id=request.customer_id,
+            result = self._crm.create_note(
+                parent_id=request.customer_id,
                 title=title,
                 content=content,
+                module=request.customer_module,
             )
             # Zoho returns {"data": [{"details": {"id": "..."}, "status": "success"}]}
             try:

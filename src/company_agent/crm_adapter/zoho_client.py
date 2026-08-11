@@ -168,6 +168,59 @@ class ZohoClient:
         )
         return rows[0] if rows else None
 
+    # ── Leads (labelled "Contactos" in the UI) ────────────────────────────────
+
+    # Leads do NOT use the standard Phone/Mobile fields — both are empty across
+    # the whole module. The number lives in this custom field, verified live
+    # 2026-08-11. Values are inconsistently formatted ("+58 4241568769",
+    # "+584123138118", "6692771132"), which is why the match is a digit suffix.
+    LEAD_PHONE_FIELD = "Tel_fono_con_c_digo_de_pa_s1"
+
+    LEAD_FIELDS = (
+        "id, First_Name, Last_Name, Email, Country, Especialista, "
+        f"{LEAD_PHONE_FIELD}"
+    )
+
+    def find_lead_by_phone(self, e164: str) -> dict | None:
+        """
+        Find a not-yet-converted lead by phone.
+
+        COQL's default universe excludes converted leads, which is what we want:
+        a converted lead has a Contact record, and that is the better match.
+        """
+        pattern = coql.like_contains(phone_search_suffix(e164), digits_only=True)
+        rows = self.coql(
+            f"SELECT {self.LEAD_FIELDS} FROM Leads "
+            f"WHERE {self.LEAD_PHONE_FIELD} like {pattern} LIMIT 3"
+        )
+        if not rows:
+            return None
+        norm_input = normalize_phone(e164)
+        for row in rows:
+            if normalize_phone(row.get(self.LEAD_PHONE_FIELD) or "") == norm_input:
+                return row
+        return rows[0]
+
+    def find_by_phone(self, e164: str) -> tuple[str, dict] | None:
+        """
+        Resolve a WhatsApp number across both populations.
+
+        Patients first: a Contact ("Comunidad NW") carries plan, specialist and
+        consultation history, so it is the stronger match. Only if there is no
+        patient do we look for a lead ("Contactos"). Searching Contacts alone —
+        which is all this client used to do — meant an inbound lead, i.e. most
+        new WhatsApp traffic, was never recognised at all.
+
+        Returns (module_api_name, row).
+        """
+        row = self.find_contact_by_phone(e164)
+        if row:
+            return "Contacts", row
+        row = self.find_lead_by_phone(e164)
+        if row:
+            return "Leads", row
+        return None
+
     # ── Deals (Tratos) ────────────────────────────────────────────────────────
 
     DEAL_FIELDS = (
@@ -213,19 +266,32 @@ class ZohoClient:
 
     # ── Notes (Handoff) ───────────────────────────────────────────────────────
 
-    def create_note_on_contact(self, contact_id: str, title: str, content: str) -> dict:
+    #: Modules a Note may be attached to. Identifiers cannot be quoted, so an
+    #: allowlist is the only safe form.
+    NOTE_PARENT_MODULES = frozenset({"Contacts", "Leads"})
+
+    def create_note(
+        self, parent_id: str, title: str, content: str, module: str = "Contacts"
+    ) -> dict:
         """
-        Add a Note to a Contact record.
-        This is the handoff signal — a human asesora sees it in the CRM.
+        Add a Note to a Contact or a Lead.
+
+        This is the handoff signal — a human asesora sees it in the CRM. The
+        parent module must match where the record actually lives: a Note stamped
+        `$se_module: Contacts` cannot attach to a Lead.
         """
         payload = {
             "data": [
                 {
                     "Note_Title": title,
                     "Note_Content": content,
-                    "Parent_Id": {"id": contact_id},
-                    "$se_module": "Contacts",
+                    "Parent_Id": {"id": coql.record_id(parent_id).strip("'")},
+                    "$se_module": coql.identifier(module, self.NOTE_PARENT_MODULES),
                 }
             ]
         }
         return self._post("Notes", payload)
+
+    def create_note_on_contact(self, contact_id: str, title: str, content: str) -> dict:
+        """Back-compat wrapper: a Note on a patient record."""
+        return self.create_note(contact_id, title, content, module="Contacts")
