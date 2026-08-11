@@ -27,7 +27,7 @@ def chunk_markdown(text: str, max_chars: int = 1200, overlap_chars: int = 180) -
         if current:
             chunks.append(current.strip())
             overlap_seed = current[-overlap_chars:].strip()
-            current = overlap_seed if overlap_seed else ""
+            current = overlap_seed or ""
             candidate = paragraph if not current else f"{current}\n\n{paragraph}"
             if len(candidate) <= max_chars:
                 current = candidate

@@ -35,7 +35,9 @@ os.environ.setdefault("HANDOFF_TEAM_GROUP_JID", "120363000000000000@g.us")
 
 # Availability probes live in tests/_stack.py — import them from there.
 
-import pytest
+# Imported after the env block on purpose: anything that pulls in agent_core must
+# see the settings above, and pytest itself triggers collection of modules that do.
+import pytest  # noqa: E402
 
 
 @pytest.fixture(scope="session")

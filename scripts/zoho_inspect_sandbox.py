@@ -6,9 +6,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from zoho_smoke_test import find_env_file, load_dotenv  # noqa: E402
-
 import httpx
+from zoho_smoke_test import find_env_file, load_dotenv
 
 
 def main() -> int:

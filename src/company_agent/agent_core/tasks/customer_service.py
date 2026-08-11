@@ -165,7 +165,7 @@ class CustomerServiceTask:
                 return TaskResult.llm_composed(
                     text, self._llm.model("escalation"), tok_in, tok_out
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - any model failure degrades to canned
                 logger.error("clarify compose failed: %s", exc)
                 return TaskResult.canned(
                     "¿Me puedes dar más detalles sobre lo que necesitas? 🩵"
@@ -201,7 +201,7 @@ class CustomerServiceTask:
             return TaskResult.llm_composed(
                 text, self._llm.model("escalation"), tok_in, tok_out
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - any model failure degrades to canned
             logger.error("fallback compose failed: %s", exc)
             return TaskResult.canned(
                 "Tengo un problema técnico, ya te conecto con una asesora 🩵"

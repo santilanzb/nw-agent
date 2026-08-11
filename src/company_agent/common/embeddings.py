@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from openai import OpenAI
 
@@ -9,7 +8,7 @@ from openai import OpenAI
 @dataclass(slots=True)
 class EmbeddingConfig:
     provider: str = "disabled"
-    api_key: Optional[str] = None
+    api_key: str | None = None
     model: str = "text-embedding-3-small"
 
 

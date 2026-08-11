@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from zoho_smoke_test import find_env_file, load_dotenv  # noqa: E402
+from zoho_smoke_test import find_env_file, load_dotenv
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
@@ -38,7 +38,7 @@ def main() -> int:
         dt = int((time.monotonic() - t0) * 1000)
         text = "".join(b.text for b in msg.content if b.type == "text")
         print(f"  [OK] {dt}ms — {text[:200]}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - smoke test reports any failure as [FAIL]
         print(f"  [FAIL] {type(e).__name__}: {e}")
         return 2
 
@@ -56,7 +56,7 @@ def main() -> int:
         )
         dt = int((time.monotonic() - t0) * 1000)
         print(f"  [OK] {dt}ms — {(resp.text or '')[:200]}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - smoke test reports any failure as [FAIL]
         print(f"  [FAIL] {type(e).__name__}: {e}")
         return 3
 

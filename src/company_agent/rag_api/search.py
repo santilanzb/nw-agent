@@ -6,8 +6,7 @@ from company_agent.common.db import connect, vector_literal
 from company_agent.common.embeddings import EmbeddingClient
 
 from .config import RagSettings
-from .schemas import RetrieveRequest, RetrieveResponse, RetrievedPassage
-
+from .schemas import RetrievedPassage, RetrieveRequest, RetrieveResponse
 
 LEXICAL_SQL = """
 SELECT

@@ -102,7 +102,7 @@ def check_turn_log(expected_intent: str, expected_outcome: str) -> dict | None:
                 """,
             ).fetchone()
             return dict(row) if row else None
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - smoke test reports any failure as [FAIL]
         return {"error": str(e)}
 
 
@@ -190,7 +190,7 @@ def run() -> int:
         print(f"   webhook status={r.status_code}")
         time.sleep(2)
         # Verify: send another message — should no longer be muted
-        r2 = post_webhook(waha_msg(HANDOFF_PHONE, "hola"))
+        post_webhook(waha_msg(HANDOFF_PHONE, "hola"))
         time.sleep(3)
         row = check_turn_log(None, None)
         if row and "error" not in row:

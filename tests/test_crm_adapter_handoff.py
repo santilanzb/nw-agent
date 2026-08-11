@@ -6,7 +6,7 @@ Patches handoff_store.check_active so no Postgres connection is needed.
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -17,11 +17,11 @@ os.environ.setdefault("CRM_PROVIDER", "mock")
 os.environ.setdefault("INTERNAL_API_KEY", "test-key")
 os.environ.setdefault("DATABASE_URL", "postgresql://agent:agent@localhost/company_agent")
 
-from company_agent.crm_adapter.main import app, handoff_store, settings  # noqa: E402
-from company_agent.common.handoff_state import HandoffStateRecord  # noqa: E402
+from company_agent.common.handoff_state import HandoffStateRecord
+from company_agent.crm_adapter.main import app, handoff_store, settings
 
 
-@pytest.fixture()
+@pytest.fixture
 def client() -> TestClient:
     return TestClient(app)
 
@@ -71,10 +71,10 @@ def test_active_handoff_returns_record_phone(client: TestClient) -> None:
         zoho_note_id=None,
         claimed_by_phone=None,
         claimed_by_name=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         claimed_at=None,
         resumed_at=None,
-        expires_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(UTC),
     )
     with patch.object(handoff_store, "check_active", return_value=record):
         resp = client.post(

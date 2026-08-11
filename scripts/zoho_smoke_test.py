@@ -31,7 +31,6 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 import httpx
 
-
 # ── tiny .env loader (no pydantic dependency) ─────────────────────────────────
 
 def load_dotenv(path: Path) -> dict[str, str]:

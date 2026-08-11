@@ -100,5 +100,5 @@ class TurnLogWriter:
                 task_name,
                 latency_ms,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - observability must never fail a turn
             logger.error("turn_log write failed turn_id=%s: %s", turn_id, exc)

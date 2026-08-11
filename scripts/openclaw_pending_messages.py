@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import json
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-import json
 from pathlib import Path
-import sys
 from typing import Any
-
 
 DEFAULT_JOURNAL = Path("/root/nw-agent/runtime/openclaw-message-journal.jsonl")
 
@@ -29,7 +28,7 @@ def parse_timestamp(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+        return datetime.fromisoformat(value).astimezone(UTC)
     except ValueError:
         return None
 
@@ -79,11 +78,8 @@ def pending_by_peer(records: list[JournalRecord], include_commands: bool = False
         elif record.type == "received" and (include_commands or not record.is_command):
             inbound.append(record)
 
-    pending: list[JournalRecord] = []
-    for record in inbound:
-        if last_sent.get(record.peer, datetime.min.replace(tzinfo=UTC)) < record.received_at:
-            pending.append(record)
-    return pending
+    never_replied = datetime.min.replace(tzinfo=UTC)
+    return [r for r in inbound if last_sent.get(r.peer, never_replied) < r.received_at]
 
 
 def main() -> int:

@@ -15,13 +15,12 @@ and indexed.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from psycopg.types.json import Jsonb  # noqa: F401  (kept for future metadata col)
 
 from company_agent.common.db import connect
-
 
 HandoffStatus = Literal["pending", "claimed", "resumed", "expired"]
 HandoffPriority = Literal["low", "normal", "high", "urgent"]
@@ -125,7 +124,7 @@ class HandoffStateStore:
         Create a new pending handoff. If one already exists for this phone,
         mark it resumed first so we never have two active rows.
         """
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=self._expire_hours)
+        expires_at = datetime.now(UTC) + timedelta(hours=self._expire_hours)
 
         with connect(self._database_url) as conn:
             # Close any prior active handoff for this phone

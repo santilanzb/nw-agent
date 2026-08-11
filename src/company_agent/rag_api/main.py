@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, FastAPI
 import uvicorn
+from fastapi import Depends, FastAPI
 
 from company_agent.common.auth import require_internal_api_key
 from company_agent.common.embeddings import EmbeddingClient, EmbeddingConfig

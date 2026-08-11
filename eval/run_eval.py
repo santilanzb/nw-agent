@@ -18,7 +18,7 @@ import sys
 import time
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -210,7 +210,7 @@ def run(models: list[str]) -> Path:
     cases = load_cases()
     system = load_system_prompt()
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     run_dir = RESULTS_DIR / timestamp
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -269,7 +269,7 @@ def run_intent_eval() -> Path:
         sys.exit(1)
 
     cases = load_intent_cases()
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     run_dir = RESULTS_DIR / timestamp
     run_dir.mkdir(parents=True, exist_ok=True)
 
