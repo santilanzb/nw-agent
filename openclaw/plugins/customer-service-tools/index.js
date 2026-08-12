@@ -440,7 +440,7 @@ export default definePluginEntry({
           "Si la respuesta tiene active=true, NO RESPONDAS al paciente — la asesora está atendiendo. " +
           "El parámetro contact_phone debe ser el número de WhatsApp del remitente en formato E.164 (+584145610594).",
         parameters: Type.Object({
-          contact_phone: Type.String({ description: "E.164, ej. +584145610594" }),
+          contact_phone: Type.String({ minLength: 1, description: "E.164, ej. +584145610594" }),
         }),
         async execute(_id, params) {
           const result = await postJson(crmAdapterUrl, internalApiKey, "/v1/handoff/state/check", {
@@ -458,12 +458,18 @@ export default definePluginEntry({
         description:
           "Escalar la conversación a una asesora humana. Crea una nota en el contacto de Zoho y abre un estado de handoff (pending) " +
           "que silencia al agente para este paciente hasta que un miembro del equipo lo tome. " +
-          "SIEMPRE incluye contact_phone (E.164 del remitente) y, si lo conoces, patient_name y last_message para que el equipo tenga contexto.",
+          "contact_phone es OBLIGATORIO (E.164 del remitente, el mismo que pasas a check_handoff_state); " +
+          "si lo conoces, incluye también patient_name y last_message para que el equipo tenga contexto.",
         parameters: Type.Object({
           conversation_id: Type.String(),
           reason: Type.String({ minLength: 10 }),
           customer_id: Type.Optional(Type.String({ description: "Zoho Contact id si se conoce" })),
-          contact_phone: Type.Optional(Type.String({ description: "E.164 del paciente, ej. +584145610594" })),
+          // Required, not optional. Without it crm-adapter writes no state row,
+          // so the escalation never mutes the bot and Gutty talks over the
+          // asesora on the next turn. The model already passes this exact value
+          // to check_handoff_state on every turn, so it is never a value it
+          // lacks — it was simply allowed to omit it.
+          contact_phone: Type.String({ minLength: 1, description: "E.164 del paciente, ej. +584145610594" }),
           patient_name: Type.Optional(Type.String()),
           last_message: Type.Optional(Type.String({ description: "Último mensaje del paciente" })),
           priority: Type.Optional(
@@ -498,8 +504,8 @@ export default definePluginEntry({
           "Si otro miembro ya tomó el caso (success=false, reason='already_claimed'), responde en el grupo: " +
           "'Ese caso ya lo tomó {claimed_by_name}.'",
         parameters: Type.Object({
-          contact_phone: Type.String({ description: "E.164 del paciente cuyo caso se toma" }),
-          claimer_phone: Type.String({ description: "E.164 del miembro del equipo que toma" }),
+          contact_phone: Type.String({ minLength: 1, description: "E.164 del paciente cuyo caso se toma" }),
+          claimer_phone: Type.String({ minLength: 1, description: "E.164 del miembro del equipo que toma" }),
           claimer_name: Type.String({ description: "Nombre del miembro del equipo, ej. 'María'" }),
         }),
         async execute(_id, params) {
@@ -516,7 +522,7 @@ export default definePluginEntry({
           "Cerrar un handoff. El paciente vuelve a poder hablar con Gutty. " +
           "Solo invocar desde el grupo de logística cuando un miembro del equipo lo indique explícitamente.",
         parameters: Type.Object({
-          contact_phone: Type.String({ description: "E.164 del paciente cuyo caso se cierra" }),
+          contact_phone: Type.String({ minLength: 1, description: "E.164 del paciente cuyo caso se cierra" }),
         }),
         async execute(_id, params) {
           const result = await postJson(crmAdapterUrl, internalApiKey, "/v1/handoff/resume", {

@@ -217,7 +217,7 @@ class TurnFSM:
             )
 
         if result.handoff:
-            await self._fire_handoff(phone, result, ctx)
+            await self._fire_handoff(phone, result, ctx, turn_id)
 
         if result.reply_text:
             await self._reply(event, turn_id, result.reply_text)
@@ -302,7 +302,7 @@ class TurnFSM:
                 last_message=stored.summary if stored else None,
             ),
         )
-        await self._fire_handoff(event.conversation_key, result, None)
+        await self._fire_handoff(event.conversation_key, result, None, turn_id)
         await self._reply(event, turn_id, MEDIA_ACK)
         await self._turn_log.write(
             turn_id=turn_id,
@@ -327,7 +327,11 @@ class TurnFSM:
         )
 
     async def _fire_handoff(
-        self, phone: str, result: TaskResult, ctx: TurnContext | None
+        self,
+        phone: str,
+        result: TaskResult,
+        ctx: TurnContext | None,
+        turn_id: uuid.UUID,
     ) -> None:
         h = result.handoff
         assert h is not None
@@ -344,11 +348,49 @@ class TurnFSM:
                 last_message=None,
                 conversation_id=h.conversation_id,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - the patient still gets answered
+            # Loud, not silent. A ticket that was never opened is a patient
+            # waiting for an asesora nobody told about, and a log line on a
+            # droplet is not a person. The turn continues — the patient keeps
+            # their reply — but the team is told, and told the truth: no mute row
+            # exists, so Gutty will keep answering this conversation.
             logger.error("handoff create failed phone=%s: %s", phone, exc)
+            await self._alert_handoff_failed(phone, h.reason, turn_id)
+            return
 
         if self._team_group_jid and ctx is not None:
             await self._notify_team(phone, h.reason, ctx)
+
+    async def _alert_handoff_failed(
+        self, phone: str, reason: str, turn_id: uuid.UUID
+    ) -> None:
+        """
+        The team hears about a handoff that did not happen.
+
+        Deliberately not the normal handoff notification: that one invites
+        "@Gutty tomo", which would find no row and answer "no tengo handoff
+        activo" — the team would be chasing a ticket that does not exist.
+        """
+        if not self._team_group_jid:
+            return
+        text = (
+            f"⚠️ *No pude abrir el ticket* — {phone}\n"
+            f"Motivo: {reason}\n"
+            f"Ref: {str(turn_id)[:8]}\n\n"
+            "El paciente ya tiene respuesta, pero Gutty *no quedó silenciada* y "
+            "va a seguir contestándole. Atiendan la conversación directamente."
+        )
+        try:
+            await self._outbox.send(
+                transport=self._transport.name,
+                recipient=self._team_group_jid,
+                text=text,
+                message_class="team",
+                idempotency_key=f"turn:{turn_id}:handoff-failed",
+                turn_id=turn_id,
+            )
+        except Exception as exc:  # noqa: BLE001 - nothing left to escalate to
+            logger.error("could not tell the team the handoff failed: %s", exc)
 
     async def _notify_team(self, phone: str, reason: str, ctx: TurnContext) -> None:
         text = self._build_team_notification(phone, reason, ctx)

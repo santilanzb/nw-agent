@@ -152,8 +152,12 @@ class HandoffRequest(BaseModel):
     # CRM trail.
     customer_module: Literal["Contacts", "Leads"] = "Contacts"
 
-    # Richer context so the team notification + state row are useful
-    contact_phone: E164Phone | None = None  # E.164, e.g. +584145610594
+    # Required, and required HERE rather than in the endpoint body. Without a
+    # phone there is nothing to mute Gutty on the next turn, so the "handoff"
+    # silently did nothing while returning 200. Validating at the model means
+    # FastAPI answers 422 before `adapter.handoff()` runs — checking later would
+    # leave an orphan Zoho Note behind, which the plugin's retry then duplicates.
+    contact_phone: E164Phone            # E.164, e.g. +584145610594
     patient_name: str | None = None
     last_message: str | None = None     # the patient's last message at handoff time
 

@@ -163,23 +163,17 @@ def handoff_human(request: HandoffRequest, _auth: InternalApiKey) -> HandoffResp
         request.conversation_id, request.customer_id, request.contact_phone,
     )
 
+    # A phone-less request never reaches here: `HandoffRequest.contact_phone` is
+    # required, so FastAPI rejects it with 422 before the Zoho Note is written.
+    # It used to fall through to a branch that logged a warning, skipped the
+    # state row and returned 200 — a handoff that left an audit Note in the CRM
+    # and never muted Gutty, which is the failure that looks like the agent
+    # talking over an asesora.
+
     # 1) Zoho Note via the existing adapter path (system of record / audit)
     zoho_response = adapter.handoff(request)
 
-    # 2) Postgres state row — but only if we have a phone to gate on.
-    # Without a phone the agent can't self-check on subsequent turns, so we
-    # still return success but skip the state row (it's a no-op handoff).
-    if not request.contact_phone:
-        logger.warning("handoff has no contact_phone; skipping state row (handoff_id=%s)", zoho_response.handoff_id)
-        return HandoffResponse(
-            handoff_id=zoho_response.handoff_id,
-            contact_id=zoho_response.contact_id,
-            note_id=zoho_response.note_id,
-            status=zoho_response.status,
-            message=zoho_response.message,
-            expires_at=None,
-        )
-
+    # 2) Postgres state row — the runtime gate that keeps Gutty quiet.
     state = handoff_store.create(
         contact_phone=request.contact_phone,
         reason=request.reason,

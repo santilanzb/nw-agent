@@ -211,6 +211,40 @@ def test_medical_question_escalates_and_leaks_no_patient_text(stack) -> None:
     assert phone in team_pings[0]
 
 
+def test_a_ticket_that_could_not_be_opened_is_announced_not_swallowed(stack, agent_app) -> None:
+    """
+    The failure used to be a log line on a droplet, which is not a person.
+
+    A handoff that never became a row means the patient is waiting for an asesora
+    nobody told about them, and Gutty is not muted, so it keeps answering. The
+    team hears about it — and hears the truth, not the usual "responde TOMO",
+    which would send them chasing a ticket that does not exist.
+    """
+    from company_agent.packages.customer_service.policy import HANDOFF_PHRASE
+
+    _, main_mod = agent_app
+
+    async def unreachable(**kwargs: object) -> dict:
+        raise RuntimeError("crm-adapter unreachable")
+
+    original = main_mod.handoff_client.create_handoff
+    main_mod.handoff_client.create_handoff = unreachable
+    try:
+        phone, _, sent = _turn(stack, "necesito que un especialista revise mis síntomas")
+    finally:
+        main_mod.handoff_client.create_handoff = original
+
+    assert _query("select 1 from handoff_state where contact_phone = %s", (phone,)) == []
+
+    assert [t for a, t in sent if a != TEAM_GROUP] == [HANDOFF_PHRASE]
+
+    team = [t for a, t in sent if a == TEAM_GROUP]
+    assert len(team) == 1
+    assert "No pude abrir el ticket" in team[0]
+    assert "TOMO" not in team[0]
+    assert phone in team[0]
+
+
 def test_agent_stays_silent_while_a_human_holds_the_conversation(stack) -> None:
     client, sent = stack
 
