@@ -77,17 +77,48 @@ def test_a_lid_with_no_alternative_is_carried_not_dropped() -> None:
     assert event.conversation_key == "+65575912997059"
 
 
+GROUP_JID = "120363429796220809@g.us"
+
+
+def _group_command(*, with_flag: bool) -> dict:
+    """
+    The real shape WAHA 2026.7 delivers: a group JID in `from`, a LID in
+    `participant`, the asesora's number in `_data.key.participantAlt` — and no
+    `isGroup` field at all.
+    """
+    raw = _dm(GROUP_JID, {"remoteJid": GROUP_JID, "participantAlt": PHONE_JID, "fromMe": False})
+    raw["payload"]["participant"] = LID
+    raw["payload"]["body"] = "@Gutty tomo +584121102566"
+    if with_flag:
+        raw["payload"]["isGroup"] = True
+    return raw
+
+
+def test_a_group_is_recognised_without_the_isGroup_flag() -> None:
+    """
+    WAHA 2026.7 sends no `isGroup`. Trusting it made every team-group message
+    look like a direct message from a "patient" whose number was the group id:
+    the claim was refused by the DM allowlist and the case could never be taken.
+    A JID ending in @g.us is a group, whatever the provider chooses to send.
+    """
+    event = TRANSPORT.normalize(_group_command(with_flag=False))
+    assert event is not None
+    assert event.is_group is True
+    assert event.group_id == GROUP_JID
+    assert event.conversation_key == GROUP_JID
+
+
+def test_the_flag_is_still_honoured_when_present() -> None:
+    event = TRANSPORT.normalize(_group_command(with_flag=True))
+    assert event is not None
+    assert event.is_group is True
+
+
 def test_a_group_participant_lid_resolves_too() -> None:
     """
     This org's groups are LID-addressed, so an asesora's claim would otherwise be
     recorded against an id that is not her phone.
     """
-    raw = _dm("120363429796220809@g.us", {"participantAlt": PHONE_JID, "fromMe": False})
-    raw["payload"]["isGroup"] = True
-    raw["payload"]["participant"] = LID
-    raw["payload"]["body"] = "@Gutty tomo +584121102566"
-
-    event = TRANSPORT.normalize(raw)
+    event = TRANSPORT.normalize(_group_command(with_flag=False))
     assert event is not None
-    assert event.group_id == "120363429796220809@g.us"
     assert event.sender_e164 == PHONE

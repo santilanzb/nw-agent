@@ -25,6 +25,7 @@ _JID_DIGITS = re.compile(r"^(\d+)@")
 # message from a real phone — the simulated transport never produced a LID, so
 # nothing in the suite had ever seen one.
 _LID_SUFFIX = "@lid"
+_GROUP_SUFFIX = "@g.us"
 
 
 def _addressable(payload: dict[str, Any], jid: str, alt_key: str) -> str:
@@ -133,7 +134,14 @@ class WahaTransport:
 
         msg_type: str = payload.get("type") or "chat"
         body: str = payload.get("body") or ""
-        is_group: bool = bool(payload.get("isGroup", False))
+        # Derived from the address, not from a flag. WAHA 2026.7 sends no
+        # `isGroup` at all, so trusting it made every team-group message look
+        # like a direct message from a "patient" whose number was the group id —
+        # the claim command was refused by the DM allowlist and the case could
+        # never be taken. A JID ending in @g.us *is* a group; that is WhatsApp's
+        # own addressing and it does not depend on a provider's field surviving
+        # a version bump. The flag is still honoured when present.
+        is_group: bool = bool(payload.get("isGroup", False)) or from_jid.endswith(_GROUP_SUFFIX)
         data: dict[str, Any] = payload.get("_data") or {}
 
         media = None
