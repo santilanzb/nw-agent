@@ -157,33 +157,46 @@ surfaces, both knowledge-corpus files (re-ingested), and the eval system prompt 
 quotes the two main families only; Control, Mantenimiento and the legacy 3/5-consulta plans stay in
 the corpus for an asesora but are not offered unprompted.
 
-## The `.env` Zoho credential cannot execute COQL — needs Santiago
+## A Zoho refresh token is BOUND to one environment — `DOMAIN_TOKEN_MISMATCH`
 
-Found 2026-08-11 while building the Products pull. The refresh token in `.env` **refreshes
-successfully** and reports its scopes:
+Cost half a session on 2026-08-11 because the symptom hid the cause. The old
+`.env` token returned `{"code":"INVALID_REQUEST"}` for **every** COQL query —
+production and sandbox, `Contacts` as well as `Products` — while refreshing
+successfully and reporting `ZohoCRM.coql.READ` among its scopes. That error says
+nothing about environments, so it reads like a broken query or a broken module.
+
+It was neither. **The token was production-bound and `.env` had `ZOHO_SANDBOX=true`.**
+A re-issued token made it obvious by answering `DOMAIN_TOKEN_MISMATCH —
+"Environments specified in the API URL and bound with token do not match"`.
+
+⇒ When Zoho 400s on everything, check `ZOHO_SANDBOX` against the `api_domain`
+the token exchange returns, **before** suspecting the query or the scopes.
+
+**There is no usable sandbox for this org.** It has no product catalogue, so the
+Products query 400s there regardless. `ZOHO_SANDBOX=false` is the working
+configuration, verified 2026-08-11: `zoho_smoke_test.py` exits 0 and
+`pull_products.py` returns 178 active products.
+
+Reads are safe against production, but **a handoff CREATES a Note**, so
+`CRM_PROVIDER=zoho` with sandbox false writes to the real CRM.
+`docker-compose.local.yml` pins `CRM_PROVIDER=mock` for that reason.
+
+**The service token's scopes** (re-issued 2026-08-11, separate Self Client from
+the Academy's so the two revoke independently):
 
 ```
-ZohoCRM.modules.contacts.READ  ZohoCRM.modules.deals.READ
-ZohoCRM.modules.custom.ALL     ZohoCRM.modules.notes.CREATE   ZohoCRM.coql.READ
+ZohoCRM.modules.contacts.READ  ZohoCRM.modules.leads.READ
+ZohoCRM.modules.deals.READ     ZohoCRM.modules.products.READ
+ZohoCRM.modules.custom.ALL     ZohoCRM.modules.notes.CREATE
+ZohoCRM.coql.READ
 ```
 
-…and yet **every** COQL query returns `{"code":"INVALID_REQUEST"}` — against `www.zohoapis.com`
-*and* `sandbox.zohoapis.com`, for `Contacts` as well as `Products`. The same query text succeeds
-through the claude.ai Zoho connector, which uses a different OAuth app. So it is the credential,
-not the query and not the module.
+`leads.READ` and `products.READ` were both missing from the previous token —
+the first is needed by the lead lookup, the second by the price pull.
 
-**This predates the Phase 1/2 work**: `scripts/zoho_smoke_test.py` fails the same way. It is why
-`scripts/pull_products.py` has a `--from-json` flag; the live path is written and unexercised.
-
-Two things follow, both for Santiago:
-1. Re-issue the Self Client refresh token, and add `ZohoCRM.modules.products.READ` while doing it —
-   the current scope list has no products scope, so the pull would fail on scope even once COQL works.
-2. The sandbox has **no product catalogue** and answers the Products query with a 400 regardless.
-   Prices only exist in production, and reading them is a `SELECT`, so `pull_products.py` targets
-   production deliberately (`--sandbox` overrides).
-
-*Paired finding, now fixed:* `zoho_smoke_test.py` printed `[4] all checks passed [OK]` and returned
-**0** while all three lookups had failed — it counted nothing. It now returns 4 and says how many.
+*Paired finding, now fixed:* `zoho_smoke_test.py` printed `[4] all checks passed
+[OK]` and returned **0** while all three lookups had failed — it counted nothing.
+It now returns 4 and says how many.
 
 ## Open
 

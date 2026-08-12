@@ -4,11 +4,14 @@ Zoho CRM smoke test — run locally without Docker.
 Verifies:
   1. .env credentials are loaded
   2. OAuth refresh-token flow returns a valid access token
-  3. A COQL query against the sandbox succeeds
+  3. A COQL query succeeds against the environment ZOHO_SANDBOX selects
   4. Phone-based lookup returns a real contact
 
+A refresh token is bound to ONE environment. Pointing ZOHO_SANDBOX at the other
+one yields DOMAIN_TOKEN_MISMATCH on every call — check that before the query.
+
 Usage (from project root):
-  python .claude/worktrees/quizzical-albattani/scripts/zoho_smoke_test.py
+  python scripts/zoho_smoke_test.py
 
 The script searches for .env in (in order):
   - $NW_AGENT_ENV
@@ -115,10 +118,10 @@ def main() -> int:
     # Note: Zoho COQL requires a WHERE clause — there is no plain count query.
 
     # --- 3. phone lookup against real sandbox contacts ------------------------
-    print("[3] phone lookup test (real sandbox phones)...")
+    print("[3] phone lookup test (real contacts in whichever environment is configured)...")
     failures = 0
     test_phones = [
-        # WhatsApp E.164 format equivalent of a stored sandbox number
+        # WhatsApp E.164 equivalents of numbers stored in the CRM
         ("Salvador Bentolila (stored as 04141267078)", "+584141267078"),
         ("Monica Sahmkow (stored as 4142934459)", "+584142934459"),
         ("Maria Jose Molina (stored as 6076431707)", "+16076431707"),
