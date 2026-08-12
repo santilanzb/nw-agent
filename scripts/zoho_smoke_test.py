@@ -116,6 +116,7 @@ def main() -> int:
 
     # --- 3. phone lookup against real sandbox contacts ------------------------
     print("[3] phone lookup test (real sandbox phones)...")
+    failures = 0
     test_phones = [
         # WhatsApp E.164 format equivalent of a stored sandbox number
         ("Salvador Bentolila (stored as 04141267078)", "+584141267078"),
@@ -141,6 +142,7 @@ def main() -> int:
             continue
         if resp.status_code != 200:
             print(f"  [FAIL] {label}: {resp.status_code} {resp.text[:200]}")
+            failures += 1
             continue
         rows = resp.json().get("data", [])
         if not rows:
@@ -155,6 +157,13 @@ def main() -> int:
             f"idioma={match.get('Idioma')}  "
             f"estado={match.get('Estado_de_Paciente')}"
         )
+
+    if failures:
+        # This used to print "all checks passed" and return 0 while every lookup
+        # had failed — a smoke test that passes by not looking, which is the one
+        # thing a smoke test must never do.
+        print(f"\n[4] {failures} of {len(test_phones)} lookups FAILED")
+        return 4
 
     print("\n[4] all checks passed [OK]")
     return 0

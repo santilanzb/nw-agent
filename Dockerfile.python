@@ -8,6 +8,10 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY knowledge ./knowledge
+# Generated price table. The dollar guard reads it to decide whether an amount
+# in a composed reply is one the business actually set. Without it the guard
+# degrades to permissive rather than blocking every priced answer.
+COPY facts ./facts
 
 # Intent seeds no longer live in a top-level intents/ directory — they ship
 # inside the function package that owns them, so `pip install .` carries them

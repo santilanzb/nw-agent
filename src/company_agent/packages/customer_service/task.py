@@ -25,6 +25,7 @@ from .policy import (
     HANDOFF_INTENTS,
     HANDOFF_PHRASE,
 )
+from .prices import unverified_amounts
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,29 @@ class CustomerServiceTask:
                 max_tokens=512,
                 trace_name="fallback",
             )
+            # Dollar guard. The system prompt asks the model not to invent
+            # prices; this checks. An amount that appears neither in the Zoho
+            # price table nor in the documentation the model was given is an
+            # amount the business would have to honour without having set it.
+            grounding = "\n".join(chunk.content for chunk in context)
+            invented = unverified_amounts(text, grounding=grounding)
+            if invented:
+                logger.error(
+                    "composed reply quoted unverified amounts %s turn=%s — handing to a human",
+                    sorted(str(a) for a in invented),
+                    ctx.turn_id,
+                )
+                return TaskResult.with_handoff(
+                    reply_text=HANDOFF_PHRASE,
+                    handoff=HandoffArgs(
+                        reason="unverified_price",
+                        priority="high",
+                        patient_name=ctx.sender_name,
+                        conversation_id=ctx.inbound_event_id,
+                    ),
+                    team_notification_text=self._build_team_notification(ctx, "unverified_price"),
+                )
+
             return TaskResult.llm_composed(
                 text, self._llm.model("escalation"), tok_in, tok_out
             )
