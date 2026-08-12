@@ -16,9 +16,23 @@ class CrmSettings(BaseSettings):
         alias="DATABASE_URL",
     )
 
-    # Handoff state lifecycle
+    # Handoff state lifecycle. Two windows, because a case nobody picks up and a
+    # case that was picked up and ran long are different failures: the first is
+    # the team missing a patient, the second is an asesora still working. One
+    # 24h clock started at creation meant a case claimed at hour 23 expired an
+    # hour later, mid-conversation.
+    handoff_pending_expire_hours: int = Field(default=4, alias="HANDOFF_PENDING_EXPIRE_HOURS")
+    handoff_claimed_expire_hours: int | None = Field(
+        default=None, alias="HANDOFF_CLAIMED_EXPIRE_HOURS"
+    )
+    # The original single knob, kept as the claimed window's default so an
+    # existing .env keeps meaning what it meant.
     handoff_expire_hours: int = Field(default=24, alias="HANDOFF_EXPIRE_HOURS")
     handoff_team_group_name: str = Field(default="Gutty Agent", alias="HANDOFF_TEAM_GROUP_NAME")
+
+    @property
+    def claimed_expire_hours(self) -> int:
+        return self.handoff_claimed_expire_hours or self.handoff_expire_hours
 
     # Provider: "mock" | "zoho"
     crm_provider: str = Field(default="mock", alias="CRM_PROVIDER")

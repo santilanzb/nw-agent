@@ -214,6 +214,25 @@ class HandoffClaimResponse(BaseModel):
     state: HandoffStateRecordModel
 
 
+class ExpiredHandoffModel(BaseModel):
+    """One case the sweep closed. `previous_status` decides what the team is told."""
+    handoff_id: str
+    contact_phone: str
+    identity_id: str | None = None
+    previous_status: str                # pending (nobody took it) | claimed
+    reason: str | None = None
+    priority: str | None = None
+    patient_name: str | None = None
+    claimed_by_name: str | None = None
+    created_at: str | None = None
+    claimed_at: str | None = None
+    expires_at: str | None = None
+
+
+class HandoffSweepResponse(BaseModel):
+    expired: list[ExpiredHandoffModel]
+
+
 class HandoffResumeRequest(BaseModel):
     contact_phone: E164Phone
 

@@ -19,6 +19,7 @@ from .models import (
     CustomerTicketsRequest,
     DealRecord,
     ExamenRecord,
+    ExpiredHandoffModel,
     HandoffClaimRequest,
     HandoffClaimResponse,
     HandoffRequest,
@@ -27,6 +28,7 @@ from .models import (
     HandoffResumeResponse,
     HandoffStateCheckRequest,
     HandoffStateRecordModel,
+    HandoffSweepResponse,
     HealthResponse,
     TicketDraftRequest,
     TicketDraftResponse,
@@ -126,7 +128,8 @@ def create_ticket_draft(request: TicketDraftRequest, _auth: InternalApiKey) -> T
 
 handoff_store = HandoffStateStore(
     database_url=settings.database_url,
-    expire_hours=settings.handoff_expire_hours,
+    pending_expire_hours=settings.handoff_pending_expire_hours,
+    claimed_expire_hours=settings.claimed_expire_hours,
 )
 
 
@@ -232,6 +235,44 @@ def handoff_claim(request: HandoffClaimRequest, _auth: InternalApiKey) -> Handof
     return HandoffClaimResponse(
         success=False, reason="not_found",
         state=HandoffStateRecordModel(active=False, contact_phone=request.contact_phone),
+    )
+
+
+@app.post("/v1/handoff/sweep", response_model=HandoffSweepResponse)
+def handoff_sweep(_auth: InternalApiKey) -> HandoffSweepResponse:
+    """
+    Close every case whose window ran out, and return them so someone can say so.
+
+    Expiry used to happen lazily inside `check_active`, which meant it only ever
+    fired when the patient wrote again — a patient who gave up left the case
+    sitting `claimed` forever — and it told nobody either way. This service owns
+    the table and the transition; agent-core owns the transport and does the
+    telling, so no background loop is added to a synchronous app.
+    """
+    expired = handoff_store.sweep_expired()
+    if expired:
+        logger.warning(
+            "expired %d handoff(s): %s",
+            len(expired),
+            ", ".join(f"{r.contact_phone}({r.previous_status})" for r in expired),
+        )
+    return HandoffSweepResponse(
+        expired=[
+            ExpiredHandoffModel(
+                handoff_id=r.id,
+                contact_phone=r.contact_phone,
+                identity_id=r.identity_id,
+                previous_status=r.previous_status,
+                reason=r.reason,
+                priority=r.priority,
+                patient_name=r.patient_name,
+                claimed_by_name=r.claimed_by_name,
+                created_at=r.created_at.isoformat() if r.created_at else None,
+                claimed_at=r.claimed_at.isoformat() if r.claimed_at else None,
+                expires_at=r.expires_at.isoformat() if r.expires_at else None,
+            )
+            for r in expired
+        ]
     )
 
 
