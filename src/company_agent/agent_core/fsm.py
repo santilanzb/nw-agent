@@ -22,6 +22,7 @@ import uuid
 from .brain.episodes import EpisodeStore
 from .brain.turn_log import TurnLogWriter
 from .identity import IdentityBroker, canonicalize
+from .media import MediaStore
 from .models import ClassificationResult, HandoffArgs, TaskResult, TurnContext
 from .outbox.sender import SendOutbox
 from .routing.classifier_client import ClassifierClient
@@ -95,6 +96,7 @@ class TurnFSM:
         team_group_jid: str,
         identity: IdentityBroker | None = None,
         episodes: EpisodeStore | None = None,
+        media: MediaStore | None = None,
     ) -> None:
         self._transport = transport
         self._outbox = outbox
@@ -105,6 +107,7 @@ class TurnFSM:
         self._team_group_jid = team_group_jid
         self._identity = identity
         self._episodes = episodes
+        self._media = media
 
     async def handle(self, event: InboundEvent) -> None:
         if event.from_me or event.is_status:
@@ -270,12 +273,27 @@ class TurnFSM:
         kind = event.media.kind
         logger.info("media turn turn_id=%s kind=%s", turn_id, kind)
 
+        # Fetch and keep it. Acknowledging alone meant the asesora picking up the
+        # conversation was handed the word "[image]" and had to go find the
+        # payment proof in WhatsApp herself.
+        stored = None
+        if self._media is not None:
+            stored = await self._media.store(
+                event.media,
+                identity_id=identity_id,
+                turn_id=turn_id,
+                source=event.source,
+            )
+
         result = TaskResult.with_handoff(
             reply_text=MEDIA_ACK,
             handoff=HandoffArgs(
                 reason=f"media_{kind}",
                 priority="normal",
                 patient_name=event.sender_name,
+                # A reference, never the content — graft 10 keeps patient media
+                # out of Zoho Notes and the team group.
+                last_message=stored.summary if stored else None,
             ),
         )
         await self._fire_handoff(event.conversation_key, result, None)

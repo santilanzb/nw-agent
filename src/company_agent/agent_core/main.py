@@ -23,6 +23,7 @@ from .fsm import TurnFSM, turn_id_for
 from .identity import IdentityBroker
 from .ingress.inbox import InboxWriter
 from .llm.anthropic import LLMClient
+from .media import MediaStore
 from .outbox.sender import SendOutbox
 from .routing.classifier_client import ClassifierClient
 from .routing.handoff_client import HandoffClient
@@ -96,6 +97,7 @@ llm = LLMClient(
 turn_log = TurnLogWriter(database_url=settings.database_url)
 identity = IdentityBroker(pool)
 episodes = EpisodeStore(pool)
+media = MediaStore(pool, settings.media_root, api_key=settings.waha_api_key)
 
 # Tasks arrive as function packages: one directory each, discovered and
 # registered here. Adding a capability means adding a directory — this line
@@ -117,6 +119,7 @@ fsm = TurnFSM(
     team_group_jid=settings.handoff_team_group_jid,
     identity=identity,
     episodes=episodes,
+    media=media,
 )
 
 _inflight: set[asyncio.Task[None]] = set()

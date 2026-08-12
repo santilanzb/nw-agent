@@ -130,8 +130,14 @@ services:
       WAHA_HOOK_HMAC_KEY: ${WAHA_HOOK_HMAC_KEY}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      MEDIA_ROOT: /app/media
       PORT: 8083
     command: uvicorn company_agent.agent_core.main:app --host 0.0.0.0 --port 8083
+    volumes:
+      # Patient media outlives a deploy: these are payment proofs and voice
+      # notes, and an asesora may open one days after it arrived. A named volume,
+      # never the image.
+      - agent_media:/app/media
     ports:
       - "8083:8083"
     depends_on:
@@ -163,6 +169,7 @@ services:
         condition: service_healthy
 
 volumes:
+  agent_media:
   postgres_data:
   waha_sessions:
   waha_files:

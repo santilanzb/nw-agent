@@ -28,6 +28,10 @@ class AgentCoreSettings(BaseSettings):
     langfuse_host: str = "http://langfuse:3000"
     port: int = 8083
     log_level: str = "INFO"
+    # Where fetched patient media is written. A named volume, never the image:
+    # these are payment proofs and voice notes, and an asesora may open one days
+    # after it arrived.
+    media_root: str = "/app/media"
     # Ingress durability
     db_pool_min_size: int = 1
     db_pool_max_size: int = 10
