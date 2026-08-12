@@ -307,11 +307,17 @@ def test_the_reference_in_the_group_resolves_to_the_conversation(stack) -> None:
     """
     client, _ = stack
     secret = "llevo tres semanas con acidez y nada me funciona"
-    phone, _, _ = _turn(stack, secret)
+    phone, _, sent_now = _turn(stack, secret)
 
     handoff_id = _query(
         "select id from handoff_state where contact_phone = %s", (phone,)
     )[0][0]
+
+    # The group is given the ticket id — the reference that opens the package.
+    # It used to be the turn id, which resolves to nothing an asesora can open.
+    team_ping = next(t for a, t in sent_now if a == TEAM_GROUP)
+    assert f"Ticket: {str(handoff_id)[:8]}" in team_ping
+    assert secret not in team_ping
 
     resp = client.get(f"/admin/handoff/{handoff_id}/context")
     assert resp.status_code == 200, resp.text
@@ -335,6 +341,35 @@ def test_the_reference_in_the_group_resolves_to_the_conversation(stack) -> None:
     assert package["slots"]["learned"] == []
 
     assert [h["handoff_id"] for h in package["history"]] == [str(handoff_id)]
+
+
+def test_a_payment_proof_reaches_the_team_and_not_just_the_queue(stack) -> None:
+    """
+    The media path opened a ticket and told nobody: the notification needed a
+    TurnContext, and media never classifies — a caption is not the content of a
+    receipt — so it always passed None. A patient's proof of payment landed in a
+    queue no one was watching.
+    """
+    client, sent = stack
+    sent.clear()
+    phone = _phone()
+    event_id = f"fsm-{random.randint(10**9, 10**10)}"
+    body = _body(event_id, phone, "")
+    body["payload"]["type"] = "image"
+    body["payload"]["media"] = {"url": "http://waha/api/files/receipt.jpg", "mimetype": "image/jpeg"}
+    body["payload"]["_data"] = {"notifyName": "Paciente Prueba", "caption": ""}
+
+    assert client.post("/webhooks/waha", json=body).status_code == 200
+    assert _wait_processed(event_id) == "processed"
+
+    handoff_id = _query(
+        "select id from handoff_state where contact_phone = %s", (phone,)
+    )[0][0]
+
+    team = [t for a, t in sent if a == TEAM_GROUP]
+    assert len(team) == 1
+    assert f"Ticket: {str(handoff_id)[:8]}" in team[0]
+    assert "media_image" in team[0]
 
 
 def test_an_unknown_reference_is_a_404(stack) -> None:

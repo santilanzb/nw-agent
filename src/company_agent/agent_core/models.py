@@ -67,7 +67,6 @@ class HandoffArgs:
 @dataclass
 class TaskResult:
     reply_text: str | None = None
-    team_notification_text: str | None = None
     handoff: HandoffArgs | None = None
     task_outcome: str = "replied"           # 'replied' | 'silent' | 'handoff' | 'error'
     composed_by_llm: bool = False
@@ -84,18 +83,13 @@ class TaskResult:
         return cls(reply_text=text, task_outcome="replied")
 
     @classmethod
-    def with_handoff(
-        cls,
-        reply_text: str,
-        handoff: HandoffArgs,
-        team_notification_text: str | None = None,
-    ) -> TaskResult:
-        return cls(
-            reply_text=reply_text,
-            handoff=handoff,
-            team_notification_text=team_notification_text,
-            task_outcome="handoff",
-        )
+    def with_handoff(cls, reply_text: str, handoff: HandoffArgs) -> TaskResult:
+        """
+        A task says a human is needed. What the team is *told* is the FSM's, not
+        the task's: a task module cannot know the ticket id, and the one that
+        tried to write the notification put the patient's message in it.
+        """
+        return cls(reply_text=reply_text, handoff=handoff, task_outcome="handoff")
 
     @classmethod
     def llm_composed(

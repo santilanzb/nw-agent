@@ -356,7 +356,7 @@ class TurnFSM:
         assert h is not None
 
         try:
-            await self._handoff.create_handoff(
+            created = await self._handoff.create_handoff(
                 contact_phone=phone,
                 reason=h.reason,
                 priority=h.priority,
@@ -378,8 +378,18 @@ class TurnFSM:
             await self._alert_handoff_failed(phone, h.reason, turn_id, identity_id)
             return
 
-        if self._team_group_jid and ctx is not None:
-            await self._notify_team(phone, h.reason, ctx)
+        # The reference the team is given has to be the one that opens the
+        # context package. It used to be the turn id, which resolves to nothing.
+        ticket_id = str((created or {}).get("handoff_id") or "")
+        await self._notify_team(
+            phone,
+            h.reason,
+            ticket_id=ticket_id,
+            turn_id=turn_id,
+            identity_id=identity_id,
+            label=h.patient_name or (ctx.sender_name if ctx else None),
+            intent=ctx.classification.intent if ctx else h.reason,
+        )
 
     async def _alert_handoff_failed(
         self,
@@ -417,33 +427,65 @@ class TurnFSM:
         except Exception as exc:  # noqa: BLE001 - nothing left to escalate to
             logger.error("could not tell the team the handoff failed: %s", exc)
 
-    async def _notify_team(self, phone: str, reason: str, ctx: TurnContext) -> None:
-        text = self._build_team_notification(phone, reason, ctx)
+    async def _notify_team(
+        self,
+        phone: str,
+        reason: str,
+        *,
+        ticket_id: str,
+        turn_id: uuid.UUID,
+        identity_id: uuid.UUID | None,
+        label: str | None,
+        intent: str,
+    ) -> None:
+        """
+        Takes what it prints rather than a TurnContext.
+
+        The media path has no context — it never classifies, because a caption is
+        not the content of a payment receipt — and so it fired a ticket and told
+        nobody. A patient's proof of payment sat in a queue no one was watching.
+        """
+        if not self._team_group_jid:
+            return
         try:
             await self._outbox.send(
                 transport=self._transport.name,
                 recipient=self._team_group_jid,
-                text=text,
+                text=self._build_team_notification(
+                    phone, reason, ticket_id=ticket_id, label=label, intent=intent
+                ),
                 message_class="team",
-                idempotency_key=f"turn:{ctx.turn_id}:team",
-                turn_id=ctx.turn_id,
-                identity_id=ctx.identity_id,
+                idempotency_key=f"turn:{turn_id}:team",
+                turn_id=turn_id,
+                identity_id=identity_id,
             )
         except Exception as exc:  # noqa: BLE001 - a failed team ping must not fail the turn
             logger.warning("team-group push failed: %s", exc)
 
-    def _build_team_notification(self, phone: str, reason: str, ctx: TurnContext) -> str:
+    def _build_team_notification(
+        self,
+        phone: str,
+        reason: str,
+        *,
+        ticket_id: str,
+        label: str | None,
+        intent: str,
+    ) -> str:
         """
         By-reference. The patient's message is deliberately absent: raw turns in
         the team group are Art. 9 content in a store with no retention or erasure
-        path. The asesora opens the chat, where she can read everything.
+        path.
+
+        The reference is the *ticket*, which is what opens the context package —
+        `/admin/handoff/{id}/context`, where the transcript actually lives. It
+        used to be the turn id, which resolves to nothing an asesora can open, so
+        "she can read it in the chat" was the whole of the answer.
         """
-        label = ctx.sender_name or phone
         return (
-            f"🚨 *Handoff* — {label}\n"
+            f"🚨 *Handoff* — {label or phone}\n"
             f"📱 {phone}\n"
-            f"Motivo: {reason} · Intención: {ctx.classification.intent}\n"
-            f"Ref: {str(ctx.turn_id)[:8]}\n\n"
+            f"Motivo: {reason} · Intención: {intent}\n"
+            f"Ticket: {ticket_id[:8] or 'sin ticket'}\n\n"
             'Quien toma el caso, responde "TOMO" en este grupo.'
         )
 

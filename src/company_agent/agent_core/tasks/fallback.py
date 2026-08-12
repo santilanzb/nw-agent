@@ -38,5 +38,4 @@ class FallbackTask:
                 priority="normal",
                 patient_name=ctx.sender_name,
             ),
-            team_notification_text=None,
         )

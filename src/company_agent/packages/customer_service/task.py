@@ -92,7 +92,6 @@ class CustomerServiceTask:
                 or "high"
             )
             phrase = HANDOFF_ENGLISH_PHRASE if intent == "handoff_english" else HANDOFF_PHRASE
-            team_notif = self._build_team_notification(ctx, reason)
             return TaskResult.with_handoff(
                 reply_text=phrase,
                 handoff=HandoffArgs(
@@ -102,7 +101,6 @@ class CustomerServiceTask:
                     last_message=ctx.inbound_text,
                     conversation_id=ctx.inbound_event_id,
                 ),
-                team_notification_text=team_notif,
             )
 
         # ── 2. Direct FAQ ─────────────────────────────────────────────────────
@@ -180,7 +178,6 @@ class CustomerServiceTask:
                         patient_name=ctx.sender_name,
                         conversation_id=ctx.inbound_event_id,
                     ),
-                    team_notification_text=self._build_team_notification(ctx, "unverified_price"),
                 )
 
             return TaskResult.llm_composed(
@@ -189,13 +186,3 @@ class CustomerServiceTask:
         except Exception as exc:  # noqa: BLE001 - any model failure degrades to canned
             logger.error("fallback compose failed: %s", exc)
             return TaskResult.canned(COMPOSE_FAILED_REPLY)
-
-    def _build_team_notification(self, ctx: TurnContext, reason: str) -> str:
-        label = ctx.sender_name or ctx.phone
-        return (
-            f"🚨 *Handoff* — {label}\n"
-            f"📱 {ctx.phone}\n"
-            f"Motivo: {reason}\n"
-            f"Última pregunta: \"{ctx.inbound_text[:200]}\"\n\n"
-            "Quien toma el caso, responde \"TOMO\" en este grupo."
-        )
