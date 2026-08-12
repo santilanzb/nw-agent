@@ -19,6 +19,7 @@ from company_agent.packages.registrar import install_packages
 from .brain.turn_log import TurnLogWriter
 from .config import AgentCoreSettings
 from .fsm import TurnFSM, turn_id_for
+from .identity import IdentityBroker
 from .ingress.inbox import InboxWriter
 from .llm.anthropic import LLMClient
 from .outbox.sender import SendOutbox
@@ -95,6 +96,7 @@ installed_packages = install_packages(registry, llm=llm)
 registry.set_fallback(FallbackTask())
 
 turn_log = TurnLogWriter(database_url=settings.database_url)
+identity = IdentityBroker(pool)
 
 fsm = TurnFSM(
     transport=waha,
@@ -104,6 +106,7 @@ fsm = TurnFSM(
     registry=registry,
     turn_log=turn_log,
     team_group_jid=settings.handoff_team_group_jid,
+    identity=identity,
 )
 
 _inflight: set[asyncio.Task[None]] = set()

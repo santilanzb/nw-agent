@@ -20,6 +20,7 @@ import time
 import uuid
 
 from .brain.turn_log import TurnLogWriter
+from .identity import IdentityBroker, canonicalize
 from .models import ClassificationResult, HandoffArgs, TaskResult, TurnContext
 from .outbox.sender import SendOutbox
 from .routing.classifier_client import ClassifierClient
@@ -30,7 +31,17 @@ from .transport.base import InboundEvent, Transport
 logger = logging.getLogger(__name__)
 
 _GUTTY_MENTION = re.compile(r"@[Gg]utty\s*", re.IGNORECASE)
-_PHONE_RE = re.compile(r"\+?\d{7,15}")
+
+# Matches a phone the way a person types one into a group chat: digits with
+# spaces, dots, dashes or parentheses between them.
+#
+# The previous pattern was `\+?\d{7,15}`, which requires seven *consecutive*
+# digits — so "@Gutty tomo +58 414 561 0594" matched nothing at all and the
+# command was silently ignored. An asesora who typed the number the way it
+# appears on a screen got no reply and no error, and the bot kept answering a
+# patient she had just claimed.
+_PHONE_RE = re.compile(r"\+?\d[\d\s.()\-]{5,24}\d")
+_MIN_PHONE_DIGITS = 7
 
 # Gutty cannot read an image or hear a voice note. Until a PHI-safe transcription
 # decision exists, media is acknowledged and routed to a human rather than
@@ -38,6 +49,25 @@ _PHONE_RE = re.compile(r"\+?\d{7,15}")
 MEDIA_ACK = (
     "Recibí tu archivo 🩵 Se lo paso a una asesora para que lo revise y te responda."
 )
+
+
+def _target_phone(command: str) -> str | None:
+    """
+    The number an asesora meant in "@Gutty tomo +58 414 561 0594".
+
+    Picks the candidate carrying the most digits, so a stray "3R" or a ticket
+    reference in the same message cannot win over the actual phone. Returns the
+    canonical E.164, which is what `handoff_state.contact_phone` is keyed on.
+    """
+    best: str | None = None
+    for match in _PHONE_RE.finditer(command):
+        canonical = canonicalize(match.group(0))
+        digits = canonical.wa_id
+        if len(digits) < _MIN_PHONE_DIGITS:
+            continue
+        if best is None or len(digits) > len(canonicalize(best).wa_id):
+            best = canonical.e164
+    return best
 
 
 def turn_id_for(event: InboundEvent) -> uuid.UUID:
@@ -62,6 +92,7 @@ class TurnFSM:
         registry: TaskRegistry,
         turn_log: TurnLogWriter,
         team_group_jid: str,
+        identity: IdentityBroker | None = None,
     ) -> None:
         self._transport = transport
         self._outbox = outbox
@@ -70,6 +101,7 @@ class TurnFSM:
         self._registry = registry
         self._turn_log = turn_log
         self._team_group_jid = team_group_jid
+        self._identity = identity
 
     async def handle(self, event: InboundEvent) -> None:
         if event.from_me or event.is_status:
@@ -85,6 +117,22 @@ class TurnFSM:
         t0 = time.monotonic()
         turn_id = turn_id_for(event)
         phone = event.conversation_key
+
+        # Who is this? Resolved once, before anything else reads the number.
+        # Degrades to None rather than failing the turn — an unidentified
+        # patient still gets an answer; they just have no durable history yet.
+        identity_id = None
+        if self._identity is not None:
+            record = await self._identity.resolve(
+                canonicalize(phone), display_name=event.sender_name
+            )
+            if record is not None:
+                identity_id = record.id
+                if record.needs_review:
+                    logger.warning(
+                        "identity %s needs review — two addresses resolve to one number",
+                        record.id,
+                    )
 
         # Handoff mute, fail-degraded. An unreachable crm-adapter must never be
         # read as "no human is on this conversation".
@@ -109,13 +157,15 @@ class TurnFSM:
                 result=TaskResult(reply_text=None, task_outcome="silent", composed_by_llm=False),
                 task_name="muted_handoff",
                 latency_ms=int((time.monotonic() - t0) * 1000),
+                identity_id=identity_id,
+                deterministic_only=deterministic_only,
             )
             return
 
         # Media gate, before classification: the classifier embeds text, and a
         # caption is not the content of a payment receipt.
         if event.media is not None and not event.has_text:
-            await self._handle_media_turn(event, turn_id, t0)
+            await self._handle_media_turn(event, turn_id, t0, identity_id=identity_id)
             return
 
         cls: ClassificationResult
@@ -168,6 +218,8 @@ class TurnFSM:
             result=result,
             task_name=task.name,
             latency_ms=latency_ms,
+            identity_id=identity_id,
+            deterministic_only=deterministic_only,
         )
 
         logger.info(
@@ -181,7 +233,12 @@ class TurnFSM:
         )
 
     async def _handle_media_turn(
-        self, event: InboundEvent, turn_id: uuid.UUID, t0: float
+        self,
+        event: InboundEvent,
+        turn_id: uuid.UUID,
+        t0: float,
+        *,
+        identity_id: uuid.UUID | None = None,
     ) -> None:
         assert event.media is not None
         kind = event.media.kind
@@ -205,6 +262,7 @@ class TurnFSM:
             result=result,
             task_name="media_deflect",
             latency_ms=int((time.monotonic() - t0) * 1000),
+            identity_id=identity_id,
         )
 
     async def _reply(self, event: InboundEvent, turn_id: uuid.UUID, text: str) -> None:
@@ -278,10 +336,7 @@ class TurnFSM:
             return
 
         command = _GUTTY_MENTION.sub("", event.text.strip()).strip()
-        phone_match = _PHONE_RE.search(command)
-        target_phone = phone_match.group(0) if phone_match else None
-        if target_phone and not target_phone.startswith("+"):
-            target_phone = "+" + target_phone
+        target_phone = _target_phone(command)
 
         claimer_phone = event.sender_e164 or event.conversation_key
         claimer_name = event.sender_name or claimer_phone or "Equipo"

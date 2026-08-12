@@ -151,6 +151,30 @@ def test_turn_is_logged_with_the_classified_intent(stack) -> None:
     assert task == "customer_service"
 
 
+def test_a_turn_is_linked_to_a_durable_identity(stack) -> None:
+    """
+    `turn_log.identity_id` existed with no FK, no index and no writer since the
+    Stage 0 migration. Without it the only join from a turn to a human is
+    sha256(phone), which changes whenever the phone string does — so Art. 17
+    erasure has no key that survives a patient reaching us in two formats.
+    """
+    phone, _, _ = _turn(stack, "dónde están ubicados?")
+
+    rows = _query(
+        """
+        select i.phone_e164, i.wa_id, i.merge_state
+        from turn_log t join identity_registry i on i.id = t.identity_id
+        where t.phone_hash = encode(digest(%s, 'sha256'), 'hex')
+        """,
+        (phone,),
+    )
+    assert len(rows) == 1, "the turn is not joined to an identity"
+    phone_e164, wa_id, merge_state = rows[0]
+    assert phone_e164 == phone
+    assert wa_id == phone.lstrip("+")
+    assert merge_state == "active"
+
+
 # ── Handoff ───────────────────────────────────────────────────────────────────
 
 def test_medical_question_escalates_and_leaks_no_patient_text(stack) -> None:

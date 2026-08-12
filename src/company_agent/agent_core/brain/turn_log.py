@@ -28,6 +28,8 @@ def _write_sync(
     result: TaskResult,
     task_name: str,
     latency_ms: int,
+    identity_id: uuid.UUID | None = None,
+    deterministic_only: bool = False,
 ) -> None:
     phone_hash = _hash_phone(phone)
     raw_params = cls.dispatch.params if cls and cls.dispatch and cls.dispatch.params else None
@@ -49,6 +51,11 @@ def _write_sync(
         "latency_ms": latency_ms,
         "reply_text": result.reply_text[:4000] if result.reply_text else None,
         "handoff_fired": result.handoff is not None,
+        # The durable join to a human. phone_hash cannot serve as one: it changes
+        # whenever the phone string does, so one patient reaching us in two
+        # formats produced two unrelated histories.
+        "identity_id": identity_id,
+        "deterministic_only": deterministic_only,
     }
     with connect(database_url) as conn:
         conn.execute(
@@ -59,14 +66,16 @@ def _write_sync(
                 dispatch_tool, dispatch_params,
                 task, task_outcome, composed_by_llm, model_used,
                 composition_tokens_in, composition_tokens_out,
-                latency_ms, reply_text, handoff_fired
+                latency_ms, reply_text, handoff_fired,
+                identity_id, deterministic_only
             ) VALUES (
                 %(turn_id)s, %(phone_hash)s, %(inbound_text)s,
                 %(classified_intent)s, %(confidence)s, %(decision)s,
                 %(dispatch_tool)s, %(dispatch_params)s,
                 %(task)s, %(task_outcome)s, %(composed_by_llm)s, %(model_used)s,
                 %(composition_tokens_in)s, %(composition_tokens_out)s,
-                %(latency_ms)s, %(reply_text)s, %(handoff_fired)s
+                %(latency_ms)s, %(reply_text)s, %(handoff_fired)s,
+                %(identity_id)s, %(deterministic_only)s
             )
             ON CONFLICT (turn_id) DO NOTHING
             """,
@@ -87,6 +96,8 @@ class TurnLogWriter:
         result: TaskResult,
         task_name: str,
         latency_ms: int,
+        identity_id: uuid.UUID | None = None,
+        deterministic_only: bool = False,
     ) -> None:
         try:
             await asyncio.to_thread(
@@ -99,6 +110,8 @@ class TurnLogWriter:
                 result,
                 task_name,
                 latency_ms,
+                identity_id,
+                deterministic_only,
             )
         except Exception as exc:  # noqa: BLE001 - observability must never fail a turn
             logger.error("turn_log write failed turn_id=%s: %s", turn_id, exc)
