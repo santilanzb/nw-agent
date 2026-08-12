@@ -112,6 +112,34 @@ def test_concurrent_first_turns_produce_one_identity() -> None:
     assert rows[0][0] == 1
 
 
+def test_a_name_learned_later_is_recorded() -> None:
+    """
+    The first message can arrive without a name — an older transport version, a
+    contact with no pushName. The wa_id lookup returns early on every later
+    message, so the name was never stored no matter how often they wrote, and the
+    asesora read a phone number where a name belongs.
+    """
+    wa_id = _wa_id()
+
+    async def scenario(pool):
+        broker = IdentityBroker(pool)
+        first = await broker.resolve(canonicalize(wa_id), display_name=None)
+        second = await broker.resolve(canonicalize(wa_id), display_name="Ana García")
+        third = await broker.resolve(canonicalize(wa_id), display_name="Otro Nombre")
+        return first, second, third
+
+    first, second, third = run_with_pool(scenario)
+
+    assert first is not None
+    assert first.display_name is None
+    assert second is not None
+    assert second.display_name == "Ana García"
+    assert second.id == first.id
+    # Only fills a hole. A name already stored is never overwritten.
+    assert third is not None
+    assert third.display_name == "Ana García"
+
+
 def test_two_addresses_for_one_number_are_flagged_rather_than_merged() -> None:
     """
     A Mexican number reaching us as 52... and as 521... is one E.164 and two

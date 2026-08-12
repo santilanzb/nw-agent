@@ -370,6 +370,24 @@ def test_a_payment_proof_reaches_the_team_and_not_just_the_queue(stack) -> None:
     assert len(team) == 1
     assert f"Ticket: {str(handoff_id)[:8]}" in team[0]
     assert "media_image" in team[0]
+    # A reference to the file, so she knows one is waiting and which — never the
+    # file, in a group with no retention policy.
+    assert "Adjunto:" in team[0]
+
+    # And the transcript shows something arrived. Without this the history jumps
+    # from the patient's last question straight to the handover, and whoever
+    # reads it cannot tell a payment proof was ever sent.
+    rows = _query(
+        """
+        select e.direction, e.text from patient_episodes e
+          join identity_registry i on i.id = e.identity_id
+         where i.phone_e164 = %s order by e.created_at, e.direction
+        """,
+        (phone,),
+    )
+    assert [d for d, _ in rows] == ["inbound", "outbound"]
+    assert rows[0][1].startswith("[")          # the reference, not the bytes
+    assert "image" in rows[0][1]
 
 
 def test_an_unknown_reference_is_a_404(stack) -> None:

@@ -57,6 +57,11 @@ class TurnContext:
 @dataclass
 class HandoffArgs:
     reason: str
+    # A reference to something the patient sent — "image · ref 0022840b" — never
+    # its content. Deliberately not `last_message`: that field holds the
+    # patient's own words, which must not reach the team group, and reusing it
+    # would put one keystroke between a reference and a leak.
+    attachment_ref: str | None = None
     priority: str = "high"
     contact_id: str | None = None
     patient_name: str | None = None

@@ -57,6 +57,13 @@ WHERE id = %(id)s AND wa_id IS NULL
 RETURNING id, phone_e164, wa_id, display_name, merge_state, zoho_module, zoho_record_id
 """
 
+LEARN_DISPLAY_NAME = """
+UPDATE identity_registry
+SET display_name = %(display_name)s, updated_at = NOW()
+WHERE id = %(id)s AND display_name IS NULL
+RETURNING id, phone_e164, wa_id, display_name, merge_state, zoho_module, zoho_record_id
+"""
+
 FLAG_FOR_REVIEW = """
 UPDATE identity_registry SET merge_state = 'review', updated_at = NOW()
 WHERE id = %(id)s AND merge_state = 'active'
@@ -159,6 +166,18 @@ class IdentityBroker:
             cur = await conn.execute(SELECT_BY_WA_ID, {"wa_id": phone.wa_id})
             row = await cur.fetchone()
             if row:
+                # A name we did not have before. The first message from a patient
+                # can arrive without one — an older transport version, a contact
+                # with no pushName — and this path returns early, so the name was
+                # never recorded no matter how many times they wrote again. The
+                # asesora then reads a phone number where a name belongs.
+                # Only fills a hole; a name already stored is never overwritten.
+                if display_name and row["display_name"] is None:
+                    learned = await (await conn.execute(
+                        LEARN_DISPLAY_NAME, {"id": row["id"], "display_name": display_name}
+                    )).fetchone()
+                    if learned:
+                        return _record(learned)
                 return _record(row)
 
             # 2. Same person, different address form — e.g. a Mexican number that

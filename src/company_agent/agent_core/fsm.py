@@ -320,21 +320,39 @@ class TurnFSM:
                 source=event.source,
             )
 
+        # A reference, never the content. It travels in its own field: reusing
+        # `last_message`, which holds the patient's words, would put one
+        # keystroke between a reference and a leak.
+        reference = stored.summary if stored else f"{kind} · sin referencia"
         result = TaskResult.with_handoff(
             reply_text=MEDIA_ACK,
             handoff=HandoffArgs(
                 reason=f"media_{kind}",
                 priority="normal",
                 patient_name=event.sender_name,
-                # A reference, never the content — graft 10 keeps patient media
-                # out of Zoho Notes and the team group.
-                last_message=stored.summary if stored else None,
+                attachment_ref=reference,
             ),
         )
         await self._fire_handoff(
             event.conversation_key, result, None, turn_id, identity_id
         )
         await self._reply(event, turn_id, MEDIA_ACK, identity_id)
+
+        # The transcript has to show that something arrived. Without this the
+        # history jumps from the patient's last question straight to Gutty
+        # handing the case over, and the asesora reading it cannot tell a
+        # payment proof was ever sent. The reference stands in for the file.
+        if self._episodes is not None:
+            await self._episodes.record(
+                identity_id=identity_id,
+                contact_phone=event.conversation_key,
+                turn_id=turn_id,
+                inbound_text=f"[{reference}]",
+                reply_text=MEDIA_ACK,
+                intent=f"media_{kind}",
+                task="media_deflect",
+            )
+
         await self._turn_log.write(
             turn_id=turn_id,
             phone=event.conversation_key,
@@ -409,6 +427,7 @@ class TurnFSM:
             identity_id=identity_id,
             label=h.patient_name or (ctx.sender_name if ctx else None),
             intent=ctx.classification.intent if ctx else h.reason,
+            attachment_ref=h.attachment_ref,
         )
 
     async def _alert_handoff_failed(
@@ -457,6 +476,7 @@ class TurnFSM:
         identity_id: uuid.UUID | None,
         label: str | None,
         intent: str,
+        attachment_ref: str | None = None,
     ) -> None:
         """
         Takes what it prints rather than a TurnContext.
@@ -472,7 +492,12 @@ class TurnFSM:
                 transport=self._transport.name,
                 recipient=self._team_group_jid,
                 text=self._build_team_notification(
-                    phone, reason, ticket_id=ticket_id, label=label, intent=intent
+                    phone,
+                    reason,
+                    ticket_id=ticket_id,
+                    label=label,
+                    intent=intent,
+                    attachment_ref=attachment_ref,
                 ),
                 message_class="team",
                 idempotency_key=f"turn:{turn_id}:team",
@@ -490,6 +515,7 @@ class TurnFSM:
         ticket_id: str,
         label: str | None,
         intent: str,
+        attachment_ref: str | None = None,
     ) -> str:
         """
         By-reference. The patient's message is deliberately absent: raw turns in
@@ -501,10 +527,15 @@ class TurnFSM:
         used to be the turn id, which resolves to nothing an asesora can open, so
         "she can read it in the chat" was the whole of the answer.
         """
+        # The attachment line is a reference — "image · ref 0022840b" — so the
+        # asesora knows a file is waiting and which one, without the file itself
+        # reaching a group that has no retention policy.
+        attachment = f"Adjunto: {attachment_ref}\n" if attachment_ref else ""
         return (
             f"🚨 *Handoff* — {label or phone}\n"
             f"📱 {phone}\n"
             f"Motivo: {reason} · Intención: {intent}\n"
+            f"{attachment}"
             f"Ticket: {ticket_id[:8] or 'sin ticket'}\n\n"
             'Quien toma el caso, responde "TOMO" en este grupo.'
         )
