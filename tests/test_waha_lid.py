@@ -41,6 +41,25 @@ def _dm(from_jid: str, key: dict) -> dict:
     }
 
 
+def test_the_sender_has_a_name() -> None:
+    """
+    WAHA 2026.7 sends `pushName` and no `notifyName`, so every patient arrived
+    anonymous: the team notice showed a phone where the asesora needed a name.
+    """
+    raw = _dm(LID, {"remoteJid": LID, "remoteJidAlt": PHONE_JID, "fromMe": False})
+    event = TRANSPORT.normalize(raw)
+    assert event is not None
+    assert event.sender_name == "Santiago Lanz"
+
+
+def test_the_older_name_key_still_works() -> None:
+    raw = _dm("584145610594@c.us", {"fromMe": False})
+    raw["payload"]["_data"] = {"notifyName": "Ana García"}
+    event = TRANSPORT.normalize(raw)
+    assert event is not None
+    assert event.sender_name == "Ana García"
+
+
 def test_a_lid_resolves_to_the_number_behind_it() -> None:
     event = TRANSPORT.normalize(
         _dm(LID, {"remoteJid": LID, "remoteJidAlt": PHONE_JID, "fromMe": False})

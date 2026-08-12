@@ -178,7 +178,17 @@ class WahaTransport:
             conversation_key=from_jid if is_group else (_e164(from_jid) if from_jid else from_jid),
             text=body,
             sender_e164=sender_e164,
-            sender_name=data.get("notifyName") or payload.get("senderName") or None,
+            # `pushName` first: WAHA 2026.7 sends that and no `notifyName`, so
+            # every patient arrived anonymous. The team notice showed a phone
+            # number where the asesora needed a name, and the context package's
+            # display_name was null for everyone. The older keys stay as
+            # fallbacks rather than being swapped out.
+            sender_name=(
+                data.get("pushName")
+                or data.get("notifyName")
+                or payload.get("senderName")
+                or None
+            ),
             is_group=is_group,
             group_id=from_jid if is_group else None,
             from_me=bool(payload.get("fromMe", False)),
