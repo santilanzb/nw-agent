@@ -23,6 +23,7 @@ from .config import AgentCoreSettings
 from .fsm import TurnFSM, turn_id_for
 from .identity import IdentityBroker
 from .ingress.inbox import InboxWriter
+from .ingress.policy import DmPolicy
 from .llm.anthropic import LLMClient
 from .media import MediaStore
 from .outbox.sender import SendOutbox
@@ -76,6 +77,9 @@ transports: dict[str, Transport] = {waha.name: waha}
 
 inbox = InboxWriter(pool)
 outbox = SendOutbox(pool, transports)
+dm_policy = DmPolicy.from_settings(
+    settings.allowed_dm_senders, settings.blocked_dm_senders
+)
 
 classifier = ClassifierClient(
     base_url=settings.rag_api_url, api_key=settings.internal_api_key
@@ -134,6 +138,15 @@ _inflight: set[asyncio.Task[None]] = set()
 
 async def _process(event_row_id: uuid.UUID, event: InboundEvent) -> None:
     """Run one turn and record its fate on the inbox row."""
+    # Checked here rather than at the webhook so the sweeper's re-drive obeys it
+    # too, and after the row is durable so a refusal leaves a record. "Why did
+    # Gutty not answer me" has to be answerable from the database.
+    refusal = dm_policy.refusal(event)
+    if refusal is not None:
+        logger.info("not answering %s: %s", event.source_event_id, refusal)
+        await inbox.mark_skipped(event_row_id, refusal)
+        return
+
     await inbox.mark_processing(event_row_id)
     try:
         # The turn hands back the identity it resolved. The inbox row was made
@@ -258,7 +271,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await _check_package_drift()
     sweeper = asyncio.create_task(_sweeper())
     logger.info(
-        "agent-core up transports=%s packages=%s claimed_intents=%d tasks=%s",
+        "agent-core up dm_policy=%s transports=%s packages=%s claimed_intents=%d tasks=%s",
+        dm_policy.describe,
         list(transports),
         [p.name for p in installed_packages],
         len(registry.claimed_intents()),

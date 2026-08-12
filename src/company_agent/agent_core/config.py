@@ -18,6 +18,13 @@ class AgentCoreSettings(BaseSettings):
     anthropic_default_model: str = "claude-sonnet-5"
     anthropic_escalation_model: str = "claude-sonnet-5"
     handoff_team_group_jid: str = ""
+    # Who gets answered. Comma-separated numbers in any format — not space
+    # separated, because a written phone number contains spaces; both
+    # lists are canonicalized before comparison. Empty allowlist = open, which is
+    # the production shape (future patients cannot be enumerated); the blocklist
+    # is the exception list that still applies there. Blocked always wins.
+    allowed_dm_senders: str = ""
+    blocked_dm_senders: str = ""
     # Webhook signature verification is mandatory. This exists only so a local
     # docker-compose run can accept unsigned test payloads; it must never be true
     # anywhere a real WhatsApp number is attached.
