@@ -115,17 +115,25 @@ class TurnFSM:
         self._episodes = episodes
         self._media = media
 
-    async def handle(self, event: InboundEvent) -> None:
+    async def handle(self, event: InboundEvent) -> uuid.UUID | None:
+        """
+        Run one turn and return the identity it resolved, if any.
+
+        The identity is returned rather than kept because the inbox row was made
+        durable before this ran — nothing is ACKed that is not — so the caller is
+        the only one holding the row id. Without it, `intake_events` keeps the
+        patient's whole message with no key an erasure could find it by.
+        """
         if event.from_me or event.is_status:
-            return
+            return None
         if event.is_group:
             await self._handle_group_turn(event)
-            return
-        await self._handle_dm_turn(event)
+            return None
+        return await self._handle_dm_turn(event)
 
     # -- DM turn --------------------------------------------------------------
 
-    async def _handle_dm_turn(self, event: InboundEvent) -> None:
+    async def _handle_dm_turn(self, event: InboundEvent) -> uuid.UUID | None:
         t0 = time.monotonic()
         turn_id = turn_id_for(event)
         phone = event.conversation_key
@@ -172,13 +180,13 @@ class TurnFSM:
                 identity_id=identity_id,
                 deterministic_only=deterministic_only,
             )
-            return
+            return identity_id
 
         # Media gate, before classification: the classifier embeds text, and a
         # caption is not the content of a payment receipt.
         if event.media is not None and not event.has_text:
             await self._handle_media_turn(event, turn_id, t0, identity_id=identity_id)
-            return
+            return identity_id
 
         cls: ClassificationResult
         try:
@@ -217,10 +225,10 @@ class TurnFSM:
             )
 
         if result.handoff:
-            await self._fire_handoff(phone, result, ctx, turn_id)
+            await self._fire_handoff(phone, result, ctx, turn_id, identity_id)
 
         if result.reply_text:
-            await self._reply(event, turn_id, result.reply_text)
+            await self._reply(event, turn_id, result.reply_text, identity_id)
 
         # True when the answer could draw on this conversation's history: the
         # column has read `false` on every row since it existed.
@@ -266,6 +274,7 @@ class TurnFSM:
             result.composed_by_llm,
             latency_ms,
         )
+        return identity_id
 
     async def _handle_media_turn(
         self,
@@ -302,8 +311,10 @@ class TurnFSM:
                 last_message=stored.summary if stored else None,
             ),
         )
-        await self._fire_handoff(event.conversation_key, result, None, turn_id)
-        await self._reply(event, turn_id, MEDIA_ACK)
+        await self._fire_handoff(
+            event.conversation_key, result, None, turn_id, identity_id
+        )
+        await self._reply(event, turn_id, MEDIA_ACK, identity_id)
         await self._turn_log.write(
             turn_id=turn_id,
             phone=event.conversation_key,
@@ -315,7 +326,13 @@ class TurnFSM:
             identity_id=identity_id,
         )
 
-    async def _reply(self, event: InboundEvent, turn_id: uuid.UUID, text: str) -> None:
+    async def _reply(
+        self,
+        event: InboundEvent,
+        turn_id: uuid.UUID,
+        text: str,
+        identity_id: uuid.UUID | None = None,
+    ) -> None:
         await self._outbox.send(
             transport=self._transport.name,
             recipient=self._transport.address_for(event.conversation_key),
@@ -324,6 +341,7 @@ class TurnFSM:
             # Keyed on the inbound event, so a re-drive cannot double-answer.
             idempotency_key=f"{event.source}:{event.source_event_id}:reply",
             turn_id=turn_id,
+            identity_id=identity_id,
         )
 
     async def _fire_handoff(
@@ -332,6 +350,7 @@ class TurnFSM:
         result: TaskResult,
         ctx: TurnContext | None,
         turn_id: uuid.UUID,
+        identity_id: uuid.UUID | None = None,
     ) -> None:
         h = result.handoff
         assert h is not None
@@ -343,6 +362,7 @@ class TurnFSM:
                 priority=h.priority,
                 contact_id=h.contact_id,
                 patient_name=h.patient_name,
+                identity_id=identity_id,
                 # By-reference: the patient's words do not go into the Zoho Note.
                 # The asesora opens the conversation, which she can already read.
                 last_message=None,
@@ -355,14 +375,18 @@ class TurnFSM:
             # their reply — but the team is told, and told the truth: no mute row
             # exists, so Gutty will keep answering this conversation.
             logger.error("handoff create failed phone=%s: %s", phone, exc)
-            await self._alert_handoff_failed(phone, h.reason, turn_id)
+            await self._alert_handoff_failed(phone, h.reason, turn_id, identity_id)
             return
 
         if self._team_group_jid and ctx is not None:
             await self._notify_team(phone, h.reason, ctx)
 
     async def _alert_handoff_failed(
-        self, phone: str, reason: str, turn_id: uuid.UUID
+        self,
+        phone: str,
+        reason: str,
+        turn_id: uuid.UUID,
+        identity_id: uuid.UUID | None = None,
     ) -> None:
         """
         The team hears about a handoff that did not happen.
@@ -388,6 +412,7 @@ class TurnFSM:
                 message_class="team",
                 idempotency_key=f"turn:{turn_id}:handoff-failed",
                 turn_id=turn_id,
+                identity_id=identity_id,
             )
         except Exception as exc:  # noqa: BLE001 - nothing left to escalate to
             logger.error("could not tell the team the handoff failed: %s", exc)
@@ -402,6 +427,7 @@ class TurnFSM:
                 message_class="team",
                 idempotency_key=f"turn:{ctx.turn_id}:team",
                 turn_id=ctx.turn_id,
+                identity_id=ctx.identity_id,
             )
         except Exception as exc:  # noqa: BLE001 - a failed team ping must not fail the turn
             logger.warning("team-group push failed: %s", exc)

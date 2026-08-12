@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any
 
 import httpx
@@ -45,12 +46,17 @@ class HandoffClient:
         patient_name: str | None = None,
         last_message: str | None = None,
         conversation_id: str | None = None,
+        identity_id: uuid.UUID | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "contact_phone": contact_phone,
             "reason": reason,
             "priority": priority,
         }
+        # The durable key for this patient. The phone is what crm-adapter looks
+        # the ticket up by; this is what an erasure finds it by.
+        if identity_id:
+            payload["identity_id"] = str(identity_id)
         if contact_id:
             payload["customer_id"] = contact_id
         if patient_name:

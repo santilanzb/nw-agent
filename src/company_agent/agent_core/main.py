@@ -131,12 +131,15 @@ async def _process(event_row_id: uuid.UUID, event: InboundEvent) -> None:
     """Run one turn and record its fate on the inbox row."""
     await inbox.mark_processing(event_row_id)
     try:
-        await fsm.handle(event)
+        # The turn hands back the identity it resolved. The inbox row was made
+        # durable before any of this ran, so it holds the patient's whole message
+        # with nothing to find it by until this stamp lands.
+        identity_id = await fsm.handle(event)
     except Exception as exc:
         logger.exception("turn failed event=%s", event.source_event_id)
         await inbox.mark_failed(event_row_id, str(exc))
         return
-    await inbox.mark_processed(event_row_id, turn_id_for(event))
+    await inbox.mark_processed(event_row_id, turn_id_for(event), identity_id)
 
 
 def _spawn(event_row_id: uuid.UUID, event: InboundEvent) -> None:

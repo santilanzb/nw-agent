@@ -55,6 +55,7 @@ class SendOutbox:
         message_class: MessageClass,
         idempotency_key: str,
         turn_id: uuid.UUID | None = None,
+        identity_id: uuid.UUID | None = None,
     ) -> SendResult:
         if message_class == "marketing" and text:
             raise ValueError(
@@ -69,6 +70,7 @@ class SendOutbox:
             message_class=message_class,
             idempotency_key=idempotency_key,
             turn_id=turn_id,
+            identity_id=identity_id,
         )
         if claimed is None:
             logger.info("send_intent already exists key=%s — not re-sending", idempotency_key)
@@ -85,16 +87,17 @@ class SendOutbox:
         message_class: MessageClass,
         idempotency_key: str,
         turn_id: uuid.UUID | None,
+        identity_id: uuid.UUID | None,
     ) -> uuid.UUID | None:
         async with self._pool.connection() as conn:
             cur = await conn.execute(
                 """
                 INSERT INTO send_intents (
                     idempotency_key, transport, recipient, message_class,
-                    body_ref, body_text, turn_id
+                    body_ref, body_text, turn_id, identity_id
                 ) VALUES (
                     %(key)s, %(transport)s, %(recipient)s, %(message_class)s,
-                    %(body_ref)s, %(body_text)s, %(turn_id)s
+                    %(body_ref)s, %(body_text)s, %(turn_id)s, %(identity_id)s
                 )
                 ON CONFLICT (idempotency_key) DO NOTHING
                 RETURNING id
@@ -107,6 +110,10 @@ class SendOutbox:
                     "body_ref": Jsonb({}),
                     "body_text": text or None,
                     "turn_id": turn_id,
+                    # Who this message is about, so an erasure can find it. A
+                    # team-group ping names the patient's number even though it
+                    # is addressed to the team, which makes it their data too.
+                    "identity_id": identity_id,
                 },
             )
             row = await cur.fetchone()

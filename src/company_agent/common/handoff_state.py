@@ -32,6 +32,7 @@ HandoffPriority = Literal["low", "normal", "high", "urgent"]
 class HandoffStateRecord:
     id: str
     contact_phone: str
+    identity_id: str | None
     contact_id: str | None
     patient_name: str | None
     conversation_id: str | None
@@ -52,6 +53,7 @@ def _row_to_record(row: dict) -> HandoffStateRecord:
     return HandoffStateRecord(
         id=str(row["id"]),
         contact_phone=row["contact_phone"],
+        identity_id=str(row["identity_id"]) if row.get("identity_id") else None,
         contact_id=row["contact_id"],
         patient_name=row["patient_name"],
         conversation_id=row["conversation_id"],
@@ -119,6 +121,7 @@ class HandoffStateStore:
         conversation_id: str | None = None,
         last_message: str | None = None,
         zoho_note_id: str | None = None,
+        identity_id: str | None = None,
     ) -> HandoffStateRecord:
         """
         Create a new pending handoff. If one already exists for this phone,
@@ -142,12 +145,12 @@ class HandoffStateStore:
                 INSERT INTO handoff_state (
                     contact_phone, contact_id, patient_name, conversation_id,
                     status, reason, priority, last_message, zoho_note_id,
-                    expires_at
+                    expires_at, identity_id
                 )
                 VALUES (
                     %(phone)s, %(contact_id)s, %(name)s, %(conv)s,
                     'pending', %(reason)s, %(priority)s, %(last_msg)s, %(note)s,
-                    %(expires)s
+                    %(expires)s, %(identity_id)s
                 )
                 RETURNING *
                 """,
@@ -161,6 +164,7 @@ class HandoffStateStore:
                     "last_msg": last_message,
                     "note": zoho_note_id,
                     "expires": expires_at,
+                    "identity_id": identity_id,
                 },
             ).fetchone()
         return _row_to_record(row)

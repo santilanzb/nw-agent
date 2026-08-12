@@ -161,6 +161,12 @@ class HandoffRequest(BaseModel):
     patient_name: str | None = None
     last_message: str | None = None     # the patient's last message at handoff time
 
+    # agent_core.identity_registry.id. The phone is what the ticket is looked up
+    # by; this is what an erasure finds it by, and what the context package joins
+    # a patient's history on. Optional because the OpenClaw runtime has no
+    # identity registry of its own — those tickets carry a phone and nothing else.
+    identity_id: str | None = None
+
 
 class HandoffResponse(BaseModel):
     handoff_id: str                     # handoff_state.id (uuid)
@@ -182,6 +188,7 @@ class HandoffStateRecordModel(BaseModel):
     active: bool
     handoff_id: str | None = None
     contact_phone: str
+    identity_id: str | None = None
     contact_id: str | None = None
     patient_name: str | None = None
     status: str | None = None           # pending | claimed | None

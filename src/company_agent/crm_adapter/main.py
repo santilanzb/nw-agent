@@ -138,6 +138,7 @@ def _record_to_model(rec: HandoffStateRecord | None) -> HandoffStateRecordModel:
         active=rec.status in ("pending", "claimed"),
         handoff_id=rec.id,
         contact_phone=rec.contact_phone,
+        identity_id=rec.identity_id,
         contact_id=rec.contact_id,
         patient_name=rec.patient_name,
         status=rec.status,
@@ -183,6 +184,7 @@ def handoff_human(request: HandoffRequest, _auth: InternalApiKey) -> HandoffResp
         conversation_id=request.conversation_id,
         last_message=request.last_message,
         zoho_note_id=zoho_response.note_id,
+        identity_id=request.identity_id,
     )
 
     return HandoffResponse(

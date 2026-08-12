@@ -211,6 +211,39 @@ def test_medical_question_escalates_and_leaks_no_patient_text(stack) -> None:
     assert phone in team_pings[0]
 
 
+def test_one_turn_stamps_the_identity_on_every_row_it_writes(stack) -> None:
+    """
+    The inbox, the outbox and the ticket all carry the patient's data, and none
+    of them had a key to it. Identity is resolved inside the turn — after the
+    inbox row is already durable, because nothing is ACKed that is not — so the
+    stamp has to be threaded back out rather than written on the way in.
+    """
+    phone, event_id, _ = _turn(stack, "necesito un especialista para mi caso")
+
+    rows = _query("select id from identity_registry where phone_e164 = %s", (phone,))
+    assert len(rows) == 1
+    identity_id = rows[0][0]
+
+    assert _query(
+        "select identity_id from intake_events where source_event_id = %s", (event_id,)
+    ) == [(identity_id,)]
+    assert _query(
+        "select identity_id from handoff_state where contact_phone = %s", (phone,)
+    ) == [(identity_id,)]
+
+    # Both sends of this turn: the patient's reply, and the team ping that names
+    # their number — which makes it the patient's data too, addressed elsewhere.
+    sends = _query(
+        """
+        select s.identity_id from send_intents s
+          join intake_events e on e.turn_id = s.turn_id
+         where e.source_event_id = %s
+        """,
+        (event_id,),
+    )
+    assert sends == [(identity_id,), (identity_id,)]
+
+
 def test_a_ticket_that_could_not_be_opened_is_announced_not_swallowed(stack, agent_app) -> None:
     """
     The failure used to be a log line on a droplet, which is not a person.

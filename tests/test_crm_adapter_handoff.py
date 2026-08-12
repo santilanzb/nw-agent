@@ -25,6 +25,7 @@ def _record(**overrides: object) -> HandoffStateRecord:
     base = {
         "id": "abc-123",
         "contact_phone": "+584241329676",
+        "identity_id": None,
         "contact_id": None,
         "patient_name": "Ana García",
         "conversation_id": None,
@@ -80,24 +81,7 @@ def test_no_active_handoff_echoes_different_phone(client: TestClient) -> None:
 
 def test_active_handoff_returns_record_phone(client: TestClient) -> None:
     """Active handoff path: phone comes from the DB record, not request."""
-    record = HandoffStateRecord(
-        id="abc-123",
-        contact_phone="+584241329676",
-        contact_id=None,
-        patient_name="Ana García",
-        conversation_id=None,
-        status="pending",
-        reason="specialist_recommendation",
-        priority="high",
-        last_message="necesito un especialista",
-        zoho_note_id=None,
-        claimed_by_phone=None,
-        claimed_by_name=None,
-        created_at=datetime.now(UTC),
-        claimed_at=None,
-        resumed_at=None,
-        expires_at=datetime.now(UTC),
-    )
+    record = _record()
     with patch.object(handoff_store, "check_active", return_value=record):
         resp = client.post(
             "/v1/handoff/state/check",

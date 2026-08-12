@@ -96,16 +96,32 @@ class InboxWriter:
                 {"id": event_id},
             )
 
-    async def mark_processed(self, event_id: uuid.UUID, turn_id: uuid.UUID | None) -> None:
+    async def mark_processed(
+        self,
+        event_id: uuid.UUID,
+        turn_id: uuid.UUID | None,
+        identity_id: uuid.UUID | None = None,
+    ) -> None:
+        """
+        Close the row, and stamp whose message it was.
+
+        The identity cannot be set at `record()` time: nothing is ACKed that is
+        not durable, and resolving an identity before the insert would put a
+        second failure mode in front of the ACK. It is resolved inside the turn
+        instead, so this is where it lands — the row already waits here for its
+        turn_id. COALESCE so a re-drive that fails to resolve cannot erase a
+        stamp an earlier attempt got right.
+        """
         async with self._pool.connection() as conn:
             await conn.execute(
                 """
                 UPDATE intake_events
                    SET status = 'processed', processed_at = NOW(), turn_id = %(turn_id)s,
+                       identity_id = COALESCE(%(identity_id)s, identity_id),
                        locked_at = NULL, last_error = NULL
                  WHERE id = %(id)s
                 """,
-                {"id": event_id, "turn_id": turn_id},
+                {"id": event_id, "turn_id": turn_id, "identity_id": identity_id},
             )
 
     async def mark_skipped(self, event_id: uuid.UUID, reason: str) -> None:
