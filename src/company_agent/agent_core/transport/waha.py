@@ -14,6 +14,37 @@ logger = logging.getLogger(__name__)
 
 _JID_DIGITS = re.compile(r"^(\d+)@")
 
+# WhatsApp's LID addressing. `payload.from` is increasingly a *linked id* —
+# `65575912997059@lid` — an opaque per-contact handle that is not a phone number
+# and never was. The real number rides alongside, in `_data.key.remoteJidAlt`.
+#
+# Read the LID as if it were a number and everything downstream is quietly wrong:
+# the identity broker registers a patient at `+65575912997059`, the ticket is
+# keyed on it so no asesora can ever claim the case, and the reply is addressed
+# to a JID that does not resolve. Verified live on 2026-08-12, first inbound
+# message from a real phone — the simulated transport never produced a LID, so
+# nothing in the suite had ever seen one.
+_LID_SUFFIX = "@lid"
+
+
+def _addressable(payload: dict[str, Any], jid: str, alt_key: str) -> str:
+    """
+    The phone-bearing JID behind a LID, or the JID unchanged.
+
+    Falls back to the LID rather than dropping the message: an unaddressable
+    conversation is still a patient talking to us, and `merge_state='review'` is
+    where an unparseable number is supposed to land.
+    """
+    if not jid or not jid.endswith(_LID_SUFFIX):
+        return jid
+    alt = ((payload.get("_data") or {}).get("key") or {}).get(alt_key) or ""
+    if not alt:
+        logger.warning(
+            "LID %s carries no %s — the conversation has no usable number", jid, alt_key
+        )
+        return jid
+    return str(alt)
+
 # WAHA message types -> our transport-neutral media kinds. Anything not listed
 # is carried as 'unknown' rather than dropped: an unrecognised type is still a
 # patient trying to tell us something.
@@ -92,7 +123,9 @@ class WahaTransport:
             return None
 
         payload: dict[str, Any] = raw.get("payload") or {}
-        from_jid: str = payload.get("from") or ""
+        # Resolved before anything reads it: a LID that reaches conversation_key
+        # becomes a fake patient, an unclaimable ticket and an undeliverable reply.
+        from_jid: str = _addressable(payload, payload.get("from") or "", "remoteJidAlt")
         event_id: str = payload.get("id") or ""
         if not event_id:
             logger.warning("waha message with no id — cannot dedup, dropping")
@@ -121,7 +154,12 @@ class WahaTransport:
         if not body.strip() and media is None:
             return None
 
-        participant_jid: str | None = payload.get("participant") or None
+        # Same treatment for the group sender: the participant list this org's
+        # groups return is LID-addressed, so an asesora's claim would be recorded
+        # against an id that is not her phone.
+        participant_jid: str | None = (
+            _addressable(payload, payload.get("participant") or "", "participantAlt") or None
+        )
         sender_e164 = _e164(participant_jid) if participant_jid else (
             _e164(from_jid) if from_jid and not is_group else None
         )
