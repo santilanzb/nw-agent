@@ -302,6 +302,35 @@ async def health() -> JSONResponse:
     return JSONResponse({"status": "ok", "service": "agent-core"})
 
 
+def _log_unnormalizable(raw: dict) -> None:
+    """
+    A message we could not read must not vanish quietly.
+
+    `normalize` returning None answers 204 and writes nothing anywhere, so a
+    payload shape we do not understand is indistinguishable from no message at
+    all. That is how an inbound photo disappeared: the transport stopped sending
+    the `type` field, every image looked like an empty text message, and there
+    was no record to find afterwards.
+
+    Shape only — keys, flags, lengths. The body is the patient's words and does
+    not belong in a log.
+    """
+    if raw.get("event") != "message":
+        return
+    p = raw.get("payload") or {}
+    media = p.get("media") if isinstance(p.get("media"), dict) else None
+    logger.warning(
+        "dropped an unreadable message event: from=%s keys=%s type=%r hasMedia=%r "
+        "media_keys=%s body_len=%d",
+        p.get("from"),
+        sorted(p.keys()),
+        p.get("type"),
+        p.get("hasMedia"),
+        sorted(media) if media else None,
+        len(p.get("body") or ""),
+    )
+
+
 @app.post("/webhooks/waha")
 async def waha_webhook(request: Request) -> Response:
     body = await request.body()
@@ -316,6 +345,7 @@ async def waha_webhook(request: Request) -> Response:
 
     event = waha.normalize(raw)
     if event is None:
+        _log_unnormalizable(raw)
         return Response(status_code=204)
 
     # Durable before acknowledged. Returning 200 for anything not yet persisted is
