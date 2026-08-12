@@ -20,10 +20,27 @@ class HandoffClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _post(self, path: str, payload: dict[str, Any]) -> Any:
         resp = await self._client.post(f"{self._base_url}{path}", json=payload)
         resp.raise_for_status()
-        return resp.json()  # type: ignore[return-value]
+        return resp.json()
+
+    async def get_handoff(self, handoff_id: str) -> dict[str, Any] | None:
+        """One ticket by its reference. None when there is no such ticket."""
+        resp = await self._client.get(f"{self._base_url}/v1/handoff/{handoff_id}")
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return resp.json()  # type: ignore[no-any-return]
+
+    async def history(
+        self, *, contact_phone: str, identity_id: str | None = None, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        """Every case this patient has been handed to a human, newest first."""
+        payload: dict[str, Any] = {"contact_phone": contact_phone, "limit": limit}
+        if identity_id:
+            payload["identity_id"] = identity_id
+        return list(await self._post("/v1/handoff/history", payload))
 
     async def check_active(self, phone: str) -> bool:
         """

@@ -16,6 +16,7 @@ from company_agent.common.db import make_async_pool
 from company_agent.packages.drift import PackageDrift, check_drift
 from company_agent.packages.registrar import install_packages
 
+from .brain.context_package import DEFAULT_TURNS, ContextPackageBuilder
 from .brain.episodes import EpisodeStore
 from .brain.turn_log import TurnLogWriter
 from .config import AgentCoreSettings
@@ -108,6 +109,10 @@ installed_packages = install_packages(
     registry, llm=llm, retrieval=retrieval, episodes=episodes
 )
 registry.set_fallback(FallbackTask())
+
+context_packages = ContextPackageBuilder(
+    pool, episodes=episodes, identity=identity, handoff=handoff_client
+)
 
 fsm = TurnFSM(
     transport=waha,
@@ -318,6 +323,23 @@ async def admin_resume(request: Request) -> JSONResponse:
     if not phone:
         raise HTTPException(status_code=400, detail="contact_phone required")
     return JSONResponse(await handoff_client.resume(phone))
+
+
+@app.get("/admin/handoff/{handoff_id}/context")
+async def admin_handoff_context(handoff_id: str, turns: int = DEFAULT_TURNS) -> JSONResponse:
+    """
+    Everything an asesora needs to pick up a conversation, behind the reference
+    the team group was given.
+
+    This endpoint is where the patient's words live. The group gets a reference
+    precisely so the content stays somewhere with an API key on the door,
+    retention that applies and an erasure that reaches it — none of which a
+    WhatsApp group has.
+    """
+    package = await context_packages.build(handoff_id, turns=turns)
+    if package is None:
+        raise HTTPException(status_code=404, detail="No existe ese ticket")
+    return JSONResponse(package)
 
 
 @app.post("/admin/handoff/sweep")

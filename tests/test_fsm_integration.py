@@ -297,6 +297,54 @@ def test_agent_stays_silent_while_a_human_holds_the_conversation(stack) -> None:
     assert sent == []
 
 
+# ── The context package ──────────────────────────────────────────────────────
+
+def test_the_reference_in_the_group_resolves_to_the_conversation(stack) -> None:
+    """
+    The team group is told a reference and nothing else, because a WhatsApp group
+    has no retention and no erasure path. That discipline only works if the
+    reference resolves — otherwise "by reference" is just withholding.
+    """
+    client, _ = stack
+    secret = "llevo tres semanas con acidez y nada me funciona"
+    phone, _, _ = _turn(stack, secret)
+
+    handoff_id = _query(
+        "select id from handoff_state where contact_phone = %s", (phone,)
+    )[0][0]
+
+    resp = client.get(f"/admin/handoff/{handoff_id}/context")
+    assert resp.status_code == 200, resp.text
+    package = resp.json()
+
+    assert package["errors"] == []
+    assert package["ticket"]["reference"] == str(handoff_id)[:8]
+    assert package["ticket"]["status"] == "pending"
+    assert package["patient"]["known"] is True
+    assert package["patient"]["phone_e164"] == phone
+    assert package["patient"]["needs_review"] is False
+
+    # What the group was not given: the patient's own words, in order.
+    transcript = package["transcript"]
+    assert [t["direction"] for t in transcript] == ["inbound", "outbound"]
+    assert transcript[0]["text"] == secret
+
+    # This is their first contact, and the package says so.
+    assert package["slots"]["derived"]["returning"] is False
+    assert package["slots"]["derived"]["patient_turns"] == 1
+    assert package["slots"]["learned"] == []
+
+    assert [h["handoff_id"] for h in package["history"]] == [str(handoff_id)]
+
+
+def test_an_unknown_reference_is_a_404(stack) -> None:
+    client, _ = stack
+    import uuid as _uuid
+
+    assert client.get(f"/admin/handoff/{_uuid.uuid4()}/context").status_code == 404
+    assert client.get("/admin/handoff/not-a-uuid/context").status_code == 404
+
+
 # ── Expiry ───────────────────────────────────────────────────────────────────
 
 def test_an_expired_case_is_announced_to_the_team_exactly_once(stack) -> None:

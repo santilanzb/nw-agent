@@ -22,6 +22,7 @@ from .models import (
     ExpiredHandoffModel,
     HandoffClaimRequest,
     HandoffClaimResponse,
+    HandoffHistoryRequest,
     HandoffRequest,
     HandoffResponse,
     HandoffResumeRequest,
@@ -198,6 +199,40 @@ def handoff_human(request: HandoffRequest, _auth: InternalApiKey) -> HandoffResp
         message=zoho_response.message,
         expires_at=state.expires_at.isoformat(),
     )
+
+
+@app.get("/v1/handoff/{handoff_id}", response_model=HandoffStateRecordModel)
+def handoff_by_id(handoff_id: str, _auth: InternalApiKey) -> HandoffStateRecordModel:
+    """
+    One ticket, by the reference the team was given.
+
+    This is the first half of the context package: agent-core resolves the
+    ticket here, then assembles the patient's history from its own tables. Each
+    service reads only what it owns, at the cost of one hop on a cold path.
+    """
+    try:
+        record = handoff_store.get_by_id(handoff_id)
+    except Exception as exc:  # noqa: BLE001 - a malformed id is a 404, not a 500
+        logger.warning("handoff lookup failed id=%s: %s", handoff_id, exc)
+        raise HTTPException(status_code=404, detail="Handoff no encontrado") from None
+    if record is None:
+        raise HTTPException(status_code=404, detail="Handoff no encontrado")
+    return _record_to_model(record)
+
+
+@app.post("/v1/handoff/history", response_model=list[HandoffStateRecordModel])
+def handoff_history(
+    request: HandoffHistoryRequest, _auth: InternalApiKey
+) -> list[HandoffStateRecordModel]:
+    """Every case this patient has been handed to a human, newest first."""
+    return [
+        _record_to_model(rec)
+        for rec in handoff_store.history(
+            contact_phone=request.contact_phone,
+            identity_id=request.identity_id,
+            limit=request.limit,
+        )
+    ]
 
 
 @app.post("/v1/handoff/state/check", response_model=HandoffStateRecordModel)

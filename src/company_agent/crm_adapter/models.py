@@ -214,6 +214,13 @@ class HandoffClaimResponse(BaseModel):
     state: HandoffStateRecordModel
 
 
+class HandoffHistoryRequest(BaseModel):
+    """Both keys, because tickets older than `identity_id` carry only a number."""
+    contact_phone: E164Phone
+    identity_id: str | None = None
+    limit: int = Field(default=10, ge=1, le=50)
+
+
 class ExpiredHandoffModel(BaseModel):
     """One case the sweep closed. `previous_status` decides what the team is told."""
     handoff_id: str

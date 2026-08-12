@@ -62,6 +62,11 @@ UPDATE identity_registry SET merge_state = 'review', updated_at = NOW()
 WHERE id = %(id)s AND merge_state = 'active'
 """
 
+SELECT_BY_ID = """
+SELECT id, phone_e164, wa_id, display_name, merge_state, zoho_module, zoho_record_id
+FROM identity_registry WHERE id = %(id)s
+"""
+
 
 @dataclass(frozen=True, slots=True)
 class IdentityRecord:
@@ -95,6 +100,38 @@ class IdentityBroker:
 
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
+
+    # ── Read-only lookups ────────────────────────────────────────────────────
+    #
+    # `resolve` is create-if-missing, which is right on a turn — an unknown
+    # patient becomes a known one by writing to us. It is wrong everywhere else:
+    # a read path that mints an identity turns "look up this ticket" into a new
+    # row in the registry every time a stale id is opened.
+
+    async def find_by_id(self, identity_id: uuid.UUID) -> IdentityRecord | None:
+        return await self._find(SELECT_BY_ID, {"id": identity_id})
+
+    async def find_by_phone(self, phone: CanonicalPhone) -> IdentityRecord | None:
+        """
+        By canonical number first, then by the address it was seen at — the same
+        order `resolve` uses, minus the insert.
+        """
+        if phone.e164:
+            found = await self._find(SELECT_BY_E164, {"e164": phone.e164})
+            if found is not None:
+                return found
+        if phone.wa_id:
+            return await self._find(SELECT_BY_WA_ID, {"wa_id": phone.wa_id})
+        return None
+
+    async def _find(self, sql: str, params: dict) -> IdentityRecord | None:
+        try:
+            async with self._pool.connection() as conn:
+                row = await (await conn.execute(sql, params)).fetchone()
+        except Exception:
+            logger.exception("identity lookup failed params=%s", sorted(params))
+            return None
+        return _record(row) if row else None
 
     async def resolve(
         self, phone: CanonicalPhone, *, display_name: str | None = None

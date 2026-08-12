@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 
 from psycopg_pool import AsyncConnectionPool
 
@@ -58,6 +59,10 @@ LIMIT %(limit)s
 class Episode:
     direction: str
     text: str
+    # Only the context package needs it — a composition prompt reads the turns in
+    # order and has no use for a timestamp — so it stays optional rather than
+    # forcing every caller to carry one.
+    created_at: datetime | None = None
 
 
 class EpisodeStore:
@@ -83,7 +88,10 @@ class EpisodeStore:
         except Exception:
             logger.exception("episode read failed identity=%s", identity_id)
             return []
-        return [Episode(direction=r["direction"], text=r["text"]) for r in reversed(rows)]
+        return [
+            Episode(direction=r["direction"], text=r["text"], created_at=r["created_at"])
+            for r in reversed(rows)
+        ]
 
     async def record(
         self,

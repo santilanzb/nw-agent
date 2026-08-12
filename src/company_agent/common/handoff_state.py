@@ -147,6 +147,34 @@ class HandoffStateStore:
             ).fetchone()
         return _row_to_record(row) if row else None
 
+    def history(
+        self,
+        *,
+        contact_phone: str,
+        identity_id: str | None = None,
+        limit: int = 10,
+    ) -> list[HandoffStateRecord]:
+        """
+        Every case this patient has been handed to a human, newest first.
+
+        Matched on the identity *or* the phone, not one or the other: tickets
+        opened before `identity_id` existed carry only a number, and the asesora
+        reading this needs "we have escalated this person four times" whichever
+        column recorded it.
+        """
+        with connect(self._database_url) as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM handoff_state
+                WHERE contact_phone = %(phone)s
+                   OR identity_id = %(identity)s::uuid
+                ORDER BY created_at DESC
+                LIMIT %(limit)s
+                """,
+                {"phone": contact_phone, "identity": identity_id, "limit": limit},
+            ).fetchall()
+        return [_row_to_record(row) for row in rows]
+
     def get_by_id(self, handoff_id: str) -> HandoffStateRecord | None:
         with connect(self._database_url) as conn:
             row = conn.execute(

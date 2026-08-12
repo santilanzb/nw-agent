@@ -133,6 +133,33 @@ def test_a_live_case_is_left_alone(store: HandoffStateStore) -> None:
     assert store.check_active(PHONE) is not None
 
 
+# ── History ──────────────────────────────────────────────────────────────────
+
+def test_history_reads_every_case_for_this_patient(store: HandoffStateStore) -> None:
+    """
+    Matched on the phone *or* the identity: tickets opened before identity_id
+    existed carry only a number, and "we have escalated this person before" has
+    to be true whichever column recorded it.
+    """
+    store.create(contact_phone=PHONE, reason="el primer caso")
+    store.create(contact_phone=PHONE, reason="el segundo caso")
+
+    rows = store.history(contact_phone=PHONE)
+
+    assert [r.reason for r in rows] == ["el segundo caso", "el primer caso"]
+
+
+def test_history_without_an_identity_still_answers(store: HandoffStateStore) -> None:
+    """
+    The null branch, which is the common one: OpenClaw tickets have no identity.
+    An untyped NULL in that comparison is an AmbiguousParameter and a 500 — this
+    is here because that is exactly how it failed.
+    """
+    store.create(contact_phone=PHONE, reason="sin identidad")
+
+    assert len(store.history(contact_phone=PHONE, identity_id=None)) == 1
+
+
 @pytest.mark.skipif(not service_available(CRM_URL), reason=SKIP_STACK)
 def test_the_sweep_endpoint_answers_with_the_same_shape() -> None:
     handoff_id = _past_due()
