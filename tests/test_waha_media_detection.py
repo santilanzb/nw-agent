@@ -19,8 +19,10 @@ import pytest
 
 from company_agent.agent_core.transport.waha import WahaTransport
 
+# The deployed base, port included — the rewrite resolves against exactly this,
+# so a fixture without the port silently tests a different address than production.
 TRANSPORT = WahaTransport(
-    base_url="http://waha", api_key="k", hmac_key="", allow_unverified=True
+    base_url="http://waha:3000", api_key="k", hmac_key="", allow_unverified=True
 )
 
 
