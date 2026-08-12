@@ -14,8 +14,8 @@ from __future__ import annotations
 import pytest
 
 from company_agent.agent_core.fsm import _target_phone
-from company_agent.agent_core.identity.phone import canonicalize, from_jid
 from company_agent.agent_core.transport.waha import WahaTransport
+from company_agent.common.phone import canonical_key, canonicalize, from_jid
 
 # (label, what WhatsApp sends, canonical E.164)
 COUNTRY_CASES = [
@@ -119,3 +119,45 @@ def test_a_command_with_no_phone_targets_nothing() -> None:
 def test_the_longest_candidate_wins_over_stray_digits() -> None:
     """A ticket reference in the same message must not beat the phone."""
     assert _target_phone("tomo ref 12345 el +584145610594") == "+584145610594"
+
+
+# ── The lookup key the two paths must agree on ───────────────────────────────
+
+@pytest.mark.parametrize(("label", "wa_id", "expected"), COUNTRY_CASES)
+def test_the_dm_key_and_the_group_key_converge(label: str, wa_id: str, expected: str) -> None:
+    """
+    The divergence this key closes.
+
+    agent-core hands crm-adapter the raw wa_id — `'+' + digits` — because that is
+    what the reply address round-trips from. An asesora's "@Gutty tomo" resolves
+    the canonical E.164. Those were two different strings for Mexico-with-the-1,
+    Argentina-without-the-9 and eight-digit Brazil, so the claim matched no row
+    and the resume left Gutty mute for the whole TTL. They coincide in Venezuela,
+    which is the only country this repo's fixtures ever used.
+    """
+    typed = _target_phone(f"tomo +{wa_id}")
+    assert typed is not None, label
+    assert canonical_key("+" + wa_id) == canonical_key(typed) == expected, label
+
+
+@pytest.mark.parametrize(("label", "wa_id", "expected"), COUNTRY_CASES)
+def test_canonical_key_is_idempotent(label: str, wa_id: str, expected: str) -> None:
+    """
+    Canonicalizing at the boundary means an already-canonical number gets a
+    second pass. If that moved the key, the group path would break the moment
+    agent-core started sending canonical numbers.
+    """
+    once = canonical_key(wa_id)
+    assert canonical_key(once) == once == expected, label
+
+
+def test_a_key_needs_at_least_one_digit() -> None:
+    """The one input a handoff cannot be keyed on."""
+    for junk in ("", "   ", "sin número"):
+        with pytest.raises(ValueError, match="digit"):
+            canonical_key(junk)
+
+
+def test_an_unparseable_number_still_gets_a_key() -> None:
+    """Same doctrine as the broker: flag it, do not drop the conversation."""
+    assert canonical_key("12345") == "+12345"

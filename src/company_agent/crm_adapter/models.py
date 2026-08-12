@@ -1,10 +1,26 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
+
+from company_agent.common.phone import canonical_key
 
 Priority = Literal["low", "normal", "high", "urgent"]
+
+# Every phone that keys a handoff is canonicalized HERE, at the boundary, not by
+# the caller. agent-core writes the raw wa_id it can address a reply to, while the
+# team-group command path resolves the canonical E.164 — so a Mexican id carrying
+# the legacy "1", an Argentine id missing the "9" or an eight-digit Brazilian id
+# produced two different keys for one patient. "@Gutty tomo" then matched nothing
+# and "@Gutty resume" left Gutty mute for the full TTL while the team was told
+# there was no case. Venezuela is the one country where the two forms coincide,
+# which is why every fixture in this repo missed it.
+#
+# One place, so the OpenClaw plugin (a third format again) and curl are fixed too.
+# `canonical_key` is idempotent on its own output, so canonicalizing an
+# already-canonical number does not move the key.
+E164Phone = Annotated[str, AfterValidator(canonical_key)]
 
 
 class HealthResponse(BaseModel):
@@ -137,7 +153,7 @@ class HandoffRequest(BaseModel):
     customer_module: Literal["Contacts", "Leads"] = "Contacts"
 
     # Richer context so the team notification + state row are useful
-    contact_phone: str | None = None    # E.164, e.g. +584145610594
+    contact_phone: E164Phone | None = None  # E.164, e.g. +584145610594
     patient_name: str | None = None
     last_message: str | None = None     # the patient's last message at handoff time
 
@@ -154,7 +170,7 @@ class HandoffResponse(BaseModel):
 # ── Handoff state inspection / control ────────────────────────────────────────
 
 class HandoffStateCheckRequest(BaseModel):
-    contact_phone: str                  # E.164
+    contact_phone: E164Phone            # E.164
 
 
 class HandoffStateRecordModel(BaseModel):
@@ -176,8 +192,8 @@ class HandoffStateRecordModel(BaseModel):
 
 
 class HandoffClaimRequest(BaseModel):
-    contact_phone: str                  # patient's E.164
-    claimer_phone: str                  # logistics member's E.164
+    contact_phone: E164Phone            # patient's E.164
+    claimer_phone: E164Phone            # logistics member's E.164
     claimer_name: str = Field(min_length=1, max_length=80)
 
 
@@ -188,7 +204,7 @@ class HandoffClaimResponse(BaseModel):
 
 
 class HandoffResumeRequest(BaseModel):
-    contact_phone: str
+    contact_phone: E164Phone
 
 
 class HandoffResumeResponse(BaseModel):

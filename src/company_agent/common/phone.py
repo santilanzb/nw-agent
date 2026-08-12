@@ -23,6 +23,14 @@ module exists to enforce:
 
 `identity_registry` is shaped for exactly that — `phone_e164` and `wa_id` are
 separate unique columns.
+
+It lives in `common/` rather than under `agent_core/identity/` because
+**crm-adapter needs it too**. `handoff_state.contact_phone` is a lookup key, and
+agent-core wrote it from the raw wa_id while the group-command path read it in
+canonical form — so `@Gutty tomo` matched nothing for every Mexican, Argentine
+and Brazilian patient whose id diverges, and `@Gutty resume` left Gutty mute for
+the full TTL. Canonicalizing at the crm-adapter boundary fixes every caller at
+once, including the OpenClaw plugin, which writes a third format of its own.
 """
 from __future__ import annotations
 
@@ -106,9 +114,12 @@ def canonicalize(raw: str) -> CanonicalPhone:
     yields a valid landline — that preference, not a validity check, is what
     recovers the number the patient actually holds.
 
-    Never raises and never returns an empty `wa_id`: an unparseable number still
-    has to reach `identity_registry` so the conversation is not silently dropped,
-    and `valid=False` is what routes it to human review.
+    Idempotent on its own `e164` output, which is what lets agent-core send the
+    raw wa_id and crm-adapter canonicalize it again without moving the key.
+
+    Never raises and never returns an empty `wa_id` for input that has digits: an
+    unparseable number still has to reach `identity_registry` so the conversation
+    is not silently dropped, and `valid=False` is what routes it to human review.
     """
     digits = _NON_DIGITS.sub("", raw or "")
     if not digits:
@@ -144,3 +155,17 @@ def canonicalize(raw: str) -> CanonicalPhone:
 def from_jid(jid: str) -> CanonicalPhone:
     """Canonicalize a transport address like '584145610594@c.us'."""
     return canonicalize(jid.split("@", 1)[0])
+
+
+def canonical_key(raw: str) -> str:
+    """
+    The string a patient is keyed on across services.
+
+    Raises on input carrying no digits at all. Every other input is carried
+    forward: a number we cannot parse still belongs to a real conversation, and
+    refusing it here would drop the patient rather than flag them.
+    """
+    canonical = canonicalize(raw)
+    if not canonical.wa_id:
+        raise ValueError("phone must contain at least one digit")
+    return canonical.e164

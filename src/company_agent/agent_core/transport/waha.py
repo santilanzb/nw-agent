@@ -39,7 +39,7 @@ def _e164(jid: str) -> str:
     reply — and a Mexican wa_id (`521...`) canonicalises to a number that is not
     the deliverable address. Canonicalisation happens in the identity broker,
     which stores `phone_e164` and `wa_id` separately for exactly this reason.
-    See `agent_core/identity/phone.py`.
+    See `common/phone.py`.
     """
     m = _JID_DIGITS.match(jid)
     return f"+{m.group(1)}" if m else jid

@@ -58,8 +58,14 @@ def _target_phone(command: str) -> str | None:
     The number an asesora meant in "@Gutty tomo +58 414 561 0594".
 
     Picks the candidate carrying the most digits, so a stray "3R" or a ticket
-    reference in the same message cannot win over the actual phone. Returns the
-    canonical E.164, which is what `handoff_state.contact_phone` is keyed on.
+    reference in the same message cannot win over the actual phone.
+
+    Returns the canonical E.164. This used to claim that was "what
+    `handoff_state.contact_phone` is keyed on", which was false: the DM path
+    wrote the raw wa_id, so for a Mexican id carrying the legacy "1", an
+    Argentine id missing the "9" or an eight-digit Brazilian id, the two strings
+    differed and this command matched nothing. crm-adapter now canonicalizes
+    every phone at its boundary, so the claim finally holds — for both paths.
     """
     best: str | None = None
     for match in _PHONE_RE.finditer(command):

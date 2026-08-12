@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from psycopg import errors
 from psycopg_pool import AsyncConnectionPool
 
-from .phone import CanonicalPhone
+from company_agent.common.phone import CanonicalPhone
 
 logger = logging.getLogger(__name__)
 
