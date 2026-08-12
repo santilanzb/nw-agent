@@ -157,6 +157,34 @@ surfaces, both knowledge-corpus files (re-ingested), and the eval system prompt 
 quotes the two main families only; Control, Mantenimiento and the legacy 3/5-consulta plans stay in
 the corpus for an asesora but are not offered unprompted.
 
+## The `.env` Zoho credential cannot execute COQL — needs Santiago
+
+Found 2026-08-11 while building the Products pull. The refresh token in `.env` **refreshes
+successfully** and reports its scopes:
+
+```
+ZohoCRM.modules.contacts.READ  ZohoCRM.modules.deals.READ
+ZohoCRM.modules.custom.ALL     ZohoCRM.modules.notes.CREATE   ZohoCRM.coql.READ
+```
+
+…and yet **every** COQL query returns `{"code":"INVALID_REQUEST"}` — against `www.zohoapis.com`
+*and* `sandbox.zohoapis.com`, for `Contacts` as well as `Products`. The same query text succeeds
+through the claude.ai Zoho connector, which uses a different OAuth app. So it is the credential,
+not the query and not the module.
+
+**This predates the Phase 1/2 work**: `scripts/zoho_smoke_test.py` fails the same way. It is why
+`scripts/pull_products.py` has a `--from-json` flag; the live path is written and unexercised.
+
+Two things follow, both for Santiago:
+1. Re-issue the Self Client refresh token, and add `ZohoCRM.modules.products.READ` while doing it —
+   the current scope list has no products scope, so the pull would fail on scope even once COQL works.
+2. The sandbox has **no product catalogue** and answers the Products query with a 400 regardless.
+   Prices only exist in production, and reading them is a `SELECT`, so `pull_products.py` targets
+   production deliberately (`--sandbox` overrides).
+
+*Paired finding, now fixed:* `zoho_smoke_test.py` printed `[4] all checks passed [OK]` and returned
+**0** while all three lookups had failed — it counted nothing. It now returns 4 and says how many.
+
 ## Open
 
 Nothing outstanding. The one unproven item — whether an off-list `Quote_Stage` value draws a hard

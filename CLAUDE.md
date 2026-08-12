@@ -170,7 +170,13 @@ EXISTS` throughout); `0002` round-trips through `downgrade`.
 Revisions: `0001` baseline (freezes `000`–`004`) · `0002` Stage 0 substrate (`intake_events`,
 `send_intents`, `identity_registry`, `approval_requests`, `crm_write_log`, `consent_events`; adds
 `conversation_class` to `turn_log`, temporal validity to `patient_facts`, and a `visibility` flag
-on the knowledge tables).
+on the knowledge tables) · `0003` FK + index on `turn_log.identity_id` (the column existed with no
+writer) · `0004` `identity_id` on the three episodic tables · `0005` `media_artifacts`.
+
+**Two FK policies, and the difference is deliberate.** `turn_log.identity_id` is `ON DELETE SET
+NULL`: it is the audit trail an erasure is measured against and must outlive the identity.
+`patient_episodes`, `episode_summaries`, `patient_facts` and `media_artifacts` are `ON DELETE
+CASCADE`: they are the thing Art. 17 erases.
 
 Two schema details that bite: the chunk's `search_tsv` is `GENERATED ALWAYS AS` — do not insert
 into it, and changing its tsconfig rebuilds the column. `patient_facts` is now append-only: a
@@ -198,7 +204,8 @@ The Brain is the replacement for OpenClaw orchestration. All services are deploy
 src/company_agent/agent_core/
   main.py           # FastAPI: verify → normalize → inbox.record → ACK → spawn turn; sweeper task
   config.py         # AgentCoreSettings (all from .env)
-  fsm.py            # TurnFSM: mute → media gate → classify → task → side-effects → outbox
+  fsm.py            # TurnFSM: identity → mute → media gate → classify → task
+                    #   → side-effects → episodes → outbox
                     #   turn_id_for(event) — deterministic turn ids, see below
   models.py         # TurnContext, TaskResult, ClassificationResult, HandoffArgs
   transport/
@@ -209,14 +216,21 @@ src/company_agent/agent_core/
     inbox.py        # InboxWriter: record (dedup), mark_*, claim_stale (FOR UPDATE SKIP LOCKED)
   outbox/
     sender.py       # SendOutbox: row before transport call, per-class in-doubt policy
+  identity/
+    phone.py              # ONE canonicalizer: canonical E.164 + the addressable wa_id
+    broker.py             # resolve() → identity_registry row; ambiguity → merge_state='review'
+  media/
+    store.py              # MediaStore: fetch → volume → media_artifacts row → reference
   routing/
     classifier_client.py  # POST /v1/classify_intent → ClassificationResult
+    retrieval_client.py   # POST /v1/retrieve — degrades to [], never raises
     handoff_client.py     # check_active (raises — see below), create_handoff, resume, claim
   tasks/
     base.py               # TaskModule Protocol + explicit-claim TaskRegistry
     fallback.py           # unclaimed intents → loud log + human escalation
   brain/
-    turn_log.py           # TurnLogWriter (phone SHA-256 hashed)
+    turn_log.py           # TurnLogWriter (phone SHA-256 hashed, plus identity_id)
+    episodes.py           # EpisodeStore: last-N turns for a composed answer
   llm/
     anthropic.py          # LLMClient with Langfuse tracing (trace_id = turn_id)
     composition.py        # Spanish system prompts + prompt builders
@@ -225,6 +239,28 @@ src/company_agent/agent_core/
 Task modules themselves live in `src/company_agent/packages/`, not here — see *Function packages*
 above. `tasks/base.py` and `tasks/fallback.py` stay: the registry is agent-core's, and the fallback
 handler is its terminal case, not a capability.
+
+### Identity, memory and prices — the Phase 1/2 rules
+
+- **A WhatsApp id is not E.164, and the divergence runs both ways.** Mexico's wa_id carries a `1`
+  E.164 dropped; Argentina's omits a `9` E.164 requires; Brazil's may lack the ninth digit.
+  **Canonicalize for identity, address from the observed `wa_id`** — `identity_registry` keeps
+  `phone_e164` and `wa_id` in separate columns precisely for this. Addressing a reply from the
+  canonical form produces an undeliverable JID.
+- Argentina needs more than a validity check: the no-9 form is a valid *fixed line*. WhatsApp is
+  mobile-only, so a valid-mobile reading beats a valid-landline one.
+- **Ambiguity becomes `merge_state='review'`**, never a silent `rows[0]`.
+- **Episodic history reads oldest-first and tiebreaks on `direction`.** Both halves of a turn are
+  written in one transaction and Postgres' `NOW()` is transaction-start time, so they share a
+  timestamp — without the tiebreak the transcript can show Gutty answering before the patient asks.
+- **Retrieval and episodes are fetched in the task, not the FSM**, so an FAQ hit, a greeting or a
+  handoff pays for neither.
+- **Prices are generated data.** `scripts/pull_products.py` → `facts/prices.yaml`, keyed on the Zoho
+  record id (`Product_Code` is null on ~60% of rows and repeats at different prices). A composed
+  reply quoting an amount that is neither an active product price nor present in the retrieved
+  context is **not sent** — the turn is handed to a human with reason `unverified_price`. A missing
+  price table escalates every priced reply rather than waving amounts through.
+- **Media: bytes to the volume, reference to the asesora.** Never the content, per graft 10.
 
 ### The durability rules — these are load-bearing, don't undo them
 
