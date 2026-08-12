@@ -109,6 +109,28 @@ def test_a_caption_becomes_the_text_and_survives() -> None:
     assert event.media is not None
 
 
+def test_the_media_url_is_resolved_against_the_address_we_know_waha_by() -> None:
+    """
+    WAHA reports its file endpoint as its own localhost. agent-core following
+    that literally connects to itself: every payment proof was recorded as
+    `fetch_failed` while sitting one hostname away. Measured live — the same
+    path answered 200 with 52 KB once the host was rewritten.
+    """
+    event = TRANSPORT.normalize(
+        _photo(url="http://localhost:3000/api/files/default/ACBD0CC.jpeg")
+    )
+    assert event is not None
+    assert event.media is not None
+    assert event.media.url == "http://waha:3000/api/files/default/ACBD0CC.jpeg"
+
+
+def test_a_url_already_on_the_right_host_is_untouched() -> None:
+    event = TRANSPORT.normalize(_photo(url="http://waha:3000/api/files/x.jpeg?t=1"))
+    assert event is not None
+    assert event.media is not None
+    assert event.media.url == "http://waha:3000/api/files/x.jpeg?t=1"
+
+
 def test_a_plain_text_message_gains_no_media() -> None:
     event = TRANSPORT.normalize(_message({"body": "hola", "hasMedia": False}))
     assert event is not None

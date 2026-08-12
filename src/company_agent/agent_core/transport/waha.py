@@ -4,6 +4,7 @@ import logging
 import re
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -130,6 +131,29 @@ class WahaTransport:
             headers={"X-Api-Key": api_key, "Content-Type": "application/json"},
         )
 
+    def _media_url(self, url: str | None) -> str | None:
+        """
+        Resolve a media URL against the address we know WAHA by.
+
+        WAHA reports its file endpoint as `http://localhost:3000/...` — its own
+        localhost, from inside its own container. agent-core following that
+        literally connects to itself and fails, so every payment proof was
+        recorded as `fetch_failed` while sitting one hostname away. The host WAHA
+        believes it has is never more authoritative than the one we configured to
+        reach it.
+        """
+        if not url:
+            return url
+        parsed = urlsplit(url)
+        if not parsed.netloc:
+            return url
+        base = urlsplit(self._base_url)
+        if not base.netloc or parsed.netloc == base.netloc:
+            return url
+        return urlunsplit(
+            (base.scheme or parsed.scheme, base.netloc, parsed.path, parsed.query, "")
+        )
+
     # ── Inbound ──────────────────────────────────────────────────────────────
 
     def verify(self, body: bytes, headers: Mapping[str, str]) -> bool:
@@ -183,7 +207,7 @@ class WahaTransport:
             media = InboundMedia(
                 kind=_media_kind(msg_type, mimetype),
                 mime_type=mimetype,
-                url=raw_media.get("url"),
+                url=self._media_url(raw_media.get("url")),
                 caption=caption,
                 provider_media_id=raw_media.get("id") or payload.get("mediaKey"),
                 filename=raw_media.get("filename"),
