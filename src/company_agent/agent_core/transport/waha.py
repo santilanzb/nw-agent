@@ -62,6 +62,30 @@ _MEDIA_KINDS: dict[str, MediaKind] = {
 _TEXT_TYPES = frozenset({"chat", "text", ""})
 
 
+def _media_kind(msg_type: str, mimetype: str | None) -> MediaKind:
+    """
+    What kind of thing the patient sent, from whatever the payload offers.
+
+    `type` is authoritative when present and absent in WAHA 2026.7, so the
+    mimetype is the fallback. Getting this wrong is not fatal — the acknowledgement
+    is the same either way — but it is what the asesora reads next to the
+    reference, so "audio" for a voice note beats "unknown" for everything.
+    """
+    if msg_type in _MEDIA_KINDS:
+        return _MEDIA_KINDS[msg_type]
+
+    mime = (mimetype or "").split(";")[0].strip().lower()
+    if not mime:
+        return "unknown"
+    # WhatsApp stickers are webp; a photo is jpeg or png.
+    if mime == "image/webp":
+        return "sticker"
+    top = mime.split("/")[0]
+    if top in ("image", "audio", "video"):
+        return top  # type: ignore[return-value]
+    return "document"
+
+
 def _e164(jid: str) -> str:
     """
     Convert a WAHA JID like '584145610594@c.us' to '+584145610594'.
@@ -145,12 +169,20 @@ class WahaTransport:
         data: dict[str, Any] = payload.get("_data") or {}
 
         media = None
-        if msg_type not in _TEXT_TYPES:
-            raw_media: dict[str, Any] = payload.get("media") or {}
+        raw_media: dict[str, Any] = payload.get("media") or {}
+        # Media is detected from the payload's own evidence, not from `type`.
+        # WAHA 2026.7 sends no `type` at all, so every inbound photo looked like
+        # an empty text message and normalize dropped it — returning None, which
+        # answers 204 and writes nothing, so a patient's payment proof vanished
+        # with no record it had ever arrived. This is the third field this
+        # transport stopped sending today.
+        has_media = bool(payload.get("hasMedia")) or bool(raw_media.get("url"))
+        if has_media or msg_type not in _TEXT_TYPES:
+            mimetype = raw_media.get("mimetype") or payload.get("mimetype")
             caption = data.get("caption") or (body if body.strip() else None)
             media = InboundMedia(
-                kind=_MEDIA_KINDS.get(msg_type, "unknown"),
-                mime_type=raw_media.get("mimetype") or payload.get("mimetype"),
+                kind=_media_kind(msg_type, mimetype),
+                mime_type=mimetype,
                 url=raw_media.get("url"),
                 caption=caption,
                 provider_media_id=raw_media.get("id") or payload.get("mediaKey"),
