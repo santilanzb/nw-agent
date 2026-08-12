@@ -121,6 +121,38 @@ def test_the_longest_candidate_wins_over_stray_digits() -> None:
     assert _target_phone("tomo ref 12345 el +584145610594") == "+584145610594"
 
 
+# ── The mention, as WhatsApp actually sends it ───────────────────────────────
+
+BOT_LID = "77043643474009"          # 14 digits: longer than any real number here
+
+
+def test_a_serialised_mention_does_not_hide_the_command() -> None:
+    """
+    WhatsApp puts no "@Gutty" in the body. It serialises a mention as `@<id>`,
+    and under LID addressing that is the bot's own linked id. The old pattern
+    matched only the literal name, so the command never started with "tomo" and
+    was dropped without a word — captured live on 2026-08-12.
+    """
+    from company_agent.agent_core.fsm import _GUTTY_MENTION
+
+    body = f"@{BOT_LID} tomo +584121102566"
+    assert _GUTTY_MENTION.sub("", body).strip().startswith("tomo")
+
+
+def test_the_bot_does_not_claim_itself() -> None:
+    """
+    A linked id is 14-15 digits, inside E.164's range, so length cannot tell it
+    from a phone — and it rides in every mention. On digit count alone the bot's
+    own id wins and Gutty claims her own case.
+    """
+    assert _target_phone(f"@{BOT_LID} tomo +584121102566") == "+584121102566"
+
+
+def test_a_mentioned_target_after_the_command_still_wins() -> None:
+    """Only leading mentions are stripped; the target must survive."""
+    assert _target_phone(f"@{BOT_LID} resume +58 414 561 0594") == "+584145610594"
+
+
 # ── The lookup key the two paths must agree on ───────────────────────────────
 
 @pytest.mark.parametrize(("label", "wa_id", "expected"), COUNTRY_CASES)

@@ -32,7 +32,17 @@ from .transport.base import InboundEvent, Transport
 
 logger = logging.getLogger(__name__)
 
-_GUTTY_MENTION = re.compile(r"@[Gg]utty\s*", re.IGNORECASE)
+# A mention of the bot, as it actually arrives.
+#
+# WhatsApp does not put "@Gutty" in the message body — it serialises a mention as
+# `@<id>`, and with LID addressing that id is the bot's own linked id:
+# `@77043643474009 tomo +58…`. The old pattern matched only the literal name, so
+# the command never started with "tomo" and was silently ignored, exactly like
+# the spaced-phone bug this file already carries a note about.
+#
+# Only leading mentions are stripped. A number after the command word is the
+# target and must survive.
+_GUTTY_MENTION = re.compile(r"^(?:\s*@(?:[Gg]utty|\d{5,}))+\s*", re.IGNORECASE)
 
 # Matches a phone the way a person types one into a group chat: digits with
 # spaces, dots, dashes or parentheses between them.
@@ -68,13 +78,23 @@ def _target_phone(command: str) -> str | None:
     every phone at its boundary, so the claim finally holds — for both paths.
     """
     best: str | None = None
+    best_valid = False
+    best_len = 0
     for match in _PHONE_RE.finditer(command):
         canonical = canonicalize(match.group(0))
         digits = canonical.wa_id
         if len(digits) < _MIN_PHONE_DIGITS:
             continue
-        if best is None or len(digits) > len(canonicalize(best).wa_id):
-            best = canonical.e164
+        # A real number beats a longer non-number. WhatsApp's linked ids are
+        # 14-15 digits — inside E.164's length range, so length alone cannot
+        # tell them apart — and the bot's own id travels in every mention. On
+        # digit count alone, Gutty would claim herself.
+        if canonical.valid and not best_valid:
+            best, best_valid, best_len = canonical.e164, True, len(digits)
+        elif canonical.valid == best_valid and len(digits) > best_len:
+            best, best_len = canonical.e164, len(digits)
+        elif best is None:
+            best, best_valid, best_len = canonical.e164, canonical.valid, len(digits)
     return best
 
 
