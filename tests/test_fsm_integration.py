@@ -297,6 +297,77 @@ def test_agent_stays_silent_while_a_human_holds_the_conversation(stack) -> None:
     assert sent == []
 
 
+# ── Expiry ───────────────────────────────────────────────────────────────────
+
+def test_an_expired_case_is_announced_to_the_team_exactly_once(stack) -> None:
+    """
+    A case that ends on the clock used to end in silence. The team could not tell
+    it apart from a case an asesora closed properly, and the patient who never
+    wrote again left it sitting claimed forever.
+    """
+    client, sent = stack
+    phone = _phone()
+
+    with psycopg.connect(db_url()) as conn:
+        conn.execute(
+            """
+            INSERT INTO handoff_state (contact_phone, status, reason, priority,
+                                       expires_at, claimed_by_name)
+            VALUES (%s, 'claimed', 'handoff_specialist', 'high',
+                    NOW() - INTERVAL '1 hour', 'Ana')
+            """,
+            (phone,),
+        )
+
+    sent.clear()
+    resp = client.post("/admin/handoff/sweep")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["announced"] >= 1
+
+    notices = [t for a, t in sent if a == TEAM_GROUP and phone in t]
+    assert len(notices) == 1
+    assert "Caso vencido" in notices[0]
+    assert "Ana" in notices[0]          # who was holding it
+    assert "TOMO" not in notices[0]     # the case is over, not up for grabs
+
+    # The patient hears nothing — they were told a human would write, and
+    # "never mind" is worse than Gutty simply answering again.
+    assert [t for a, t in sent if a != TEAM_GROUP] == []
+
+    assert _query(
+        "select status from handoff_state where contact_phone = %s", (phone,)
+    ) == [("expired",)]
+
+    # A second sweep has nothing left to say.
+    sent.clear()
+    assert client.post("/admin/handoff/sweep").json()["announced"] == 0
+    assert [t for a, t in sent if phone in t] == []
+
+
+def test_an_expired_case_stops_muting_the_patient(stack) -> None:
+    """
+    The mute has to end the moment the window does, not when the sweep gets
+    round to flipping the row — otherwise a patient sits unanswered for up to a
+    tick after their case is already over.
+
+    Read against test_agent_stays_silent_while_a_human_holds_the_conversation,
+    which is this same setup inside the window and expects nothing at all.
+    """
+    phone, _, _ = _turn(stack, "necesito un especialista para mi caso")
+
+    with psycopg.connect(db_url()) as conn:
+        conn.execute(
+            "UPDATE handoff_state SET expires_at = NOW() - INTERVAL '1 minute' "
+            "WHERE contact_phone = %s",
+            (phone,),
+        )
+
+    _, _, sent_after = _turn(stack, "hola de nuevo", phone=phone)
+    replies = [t for a, t in sent_after if a != TEAM_GROUP]
+    assert len(replies) == 1
+    assert replies[0].strip()
+
+
 # ── Idempotency across the whole stack ───────────────────────────────────────
 
 def test_redelivery_produces_exactly_one_reply(stack) -> None:

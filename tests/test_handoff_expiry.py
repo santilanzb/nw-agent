@@ -101,12 +101,13 @@ def _past_due(status: str = "pending") -> str:
 def test_the_sweep_reports_what_it_expired(store: HandoffStateStore) -> None:
     handoff_id = _past_due("claimed")
 
-    swept = store.sweep_expired()
+    # The sweep is global by nature, so every assertion here is scoped to this
+    # test's own number — anything else would be a claim about the whole table.
+    swept = [r for r in store.sweep_expired() if r.contact_phone == PHONE]
 
     assert [r.id for r in swept] == [handoff_id]
     assert swept[0].previous_status == "claimed"
     assert swept[0].claimed_by_name == "Ana"
-    assert swept[0].contact_phone == PHONE
 
 
 def test_the_sweep_is_the_only_one_to_report_a_row(store: HandoffStateStore) -> None:
@@ -116,8 +117,8 @@ def test_the_sweep_is_the_only_one_to_report_a_row(store: HandoffStateStore) -> 
     """
     _past_due()
 
-    assert len(store.sweep_expired()) == 1
-    assert store.sweep_expired() == []
+    assert len([r for r in store.sweep_expired() if r.contact_phone == PHONE]) == 1
+    assert [r for r in store.sweep_expired() if r.contact_phone == PHONE] == []
 
 
 def test_an_expired_case_stops_muting_the_patient(store: HandoffStateStore) -> None:
@@ -128,7 +129,7 @@ def test_an_expired_case_stops_muting_the_patient(store: HandoffStateStore) -> N
 
 def test_a_live_case_is_left_alone(store: HandoffStateStore) -> None:
     store.create(contact_phone=PHONE, reason="todavía dentro de la ventana")
-    assert store.sweep_expired() == []
+    assert [r for r in store.sweep_expired() if r.contact_phone == PHONE] == []
     assert store.check_active(PHONE) is not None
 
 
@@ -139,6 +140,7 @@ def test_the_sweep_endpoint_answers_with_the_same_shape() -> None:
     resp = httpx.post(f"{CRM_URL}/v1/handoff/sweep", headers=HEADERS, timeout=10)
 
     assert resp.status_code == 200, resp.text
-    expired = resp.json()["expired"]
-    assert [r["handoff_id"] for r in expired] == [handoff_id]
-    assert expired[0]["previous_status"] == "pending"
+    mine = [r for r in resp.json()["expired"] if r["handoff_id"] == handoff_id]
+    assert len(mine) == 1
+    assert mine[0]["previous_status"] == "pending"
+    assert mine[0]["contact_phone"] == PHONE

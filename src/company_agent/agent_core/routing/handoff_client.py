@@ -70,6 +70,17 @@ class HandoffClient:
     async def resume(self, phone: str) -> dict[str, Any]:
         return await self._post("/v1/handoff/resume", {"contact_phone": phone})
 
+    async def sweep(self) -> list[dict[str, Any]]:
+        """
+        Close every case whose window ran out, and get back what was closed.
+
+        Raises on failure, like `check_active`: a sweep that silently returned []
+        would look exactly like "nothing expired", and the whole point of this
+        call is that expiries stop being invisible.
+        """
+        data = await self._post("/v1/handoff/sweep", {})
+        return list(data.get("expired", []))
+
     async def claim(
         self, contact_phone: str, claimer_phone: str, claimer_name: str
     ) -> dict[str, Any]:

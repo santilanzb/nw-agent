@@ -447,6 +447,74 @@ class TurnFSM:
             'Quien toma el caso, responde "TOMO" en este grupo.'
         )
 
+    # -- Expiry announcements --------------------------------------------------
+
+    async def announce_expired(self, expired: list[dict]) -> int:
+        """
+        Tell the team about cases that ended on the clock rather than on a close.
+
+        crm-adapter owns the table and made the transition; this owns the
+        transport and the copy, which is why the announcement lives beside the
+        other team messages instead of in a synchronous service with no way to
+        send anything.
+
+        Nothing goes to the patient. They were told an asesora would write —
+        following that with "actually, never mind" is worse than the silence, and
+        Gutty answering them again is the visible repair.
+        """
+        if not self._team_group_jid:
+            if expired:
+                logger.warning(
+                    "%d handoff(s) expired with no team group configured to tell",
+                    len(expired),
+                )
+            return 0
+
+        announced = 0
+        for row in expired:
+            handoff_id = row.get("handoff_id") or ""
+            raw_identity = row.get("identity_id")
+            try:
+                result = await self._outbox.send(
+                    transport=self._transport.name,
+                    recipient=self._team_group_jid,
+                    text=self._build_expiry_notice(row),
+                    message_class="team",
+                    # Derived from the ticket, never the clock: a re-driven sweep
+                    # must not tell the team twice that one case was dropped.
+                    idempotency_key=f"handoff:{handoff_id}:expired",
+                    identity_id=uuid.UUID(raw_identity) if raw_identity else None,
+                )
+            except Exception as exc:  # noqa: BLE001 - one bad row must not stop the rest
+                logger.error("could not announce expired handoff %s: %s", handoff_id, exc)
+                continue
+            if result.sent:
+                announced += 1
+        return announced
+
+    def _build_expiry_notice(self, row: dict) -> str:
+        """
+        By-reference, like every other team message: who and which ticket, never
+        what the patient said.
+        """
+        phone = row.get("contact_phone") or "sin número"
+        label = row.get("patient_name") or phone
+        ticket = str(row.get("handoff_id") or "")[:8]
+
+        if row.get("previous_status") == "claimed":
+            holder = row.get("claimed_by_name") or "alguien del equipo"
+            body = f"Lo tenía {holder} y no se cerró."
+        else:
+            body = "Nadie lo tomó a tiempo."
+
+        return (
+            f"⏰ *Caso vencido* — {label}\n"
+            f"📱 {phone}\n"
+            f"Motivo: {row.get('reason') or 'sin motivo'}\n"
+            f"{body} Vuelvo a atender a este paciente.\n"
+            f"Ticket: {ticket}"
+        )
+
     # -- Group turn: team claim / resume commands ------------------------------
 
     async def _handle_group_turn(self, event: InboundEvent) -> None:

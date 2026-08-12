@@ -180,8 +180,26 @@ async def _sweeper() -> None:
             recovered = await outbox.recover_in_doubt()
             if recovered:
                 logger.warning("resolved %d in-doubt send intents", recovered)
+
+            await _sweep_handoffs()
         except Exception:
             logger.exception("sweeper tick failed")
+
+
+async def _sweep_handoffs() -> int:
+    """
+    End the cases whose window ran out, and tell the team about each one.
+
+    Expiry used to be a side effect of a patient writing again: someone who gave
+    up left their case sitting claimed forever, and either way nobody was told.
+    On a clock instead, so a dropped case surfaces even when the patient has
+    stopped trying — which is exactly when it matters most.
+    """
+    expired = await handoff_client.sweep()
+    if not expired:
+        return 0
+    logger.warning("%d handoff(s) expired", len(expired))
+    return await fsm.announce_expired(expired)
 
 
 # -- FastAPI app --------------------------------------------------------------
@@ -300,6 +318,18 @@ async def admin_resume(request: Request) -> JSONResponse:
     if not phone:
         raise HTTPException(status_code=400, detail="contact_phone required")
     return JSONResponse(await handoff_client.resume(phone))
+
+
+@app.post("/admin/handoff/sweep")
+async def admin_sweep_handoffs() -> JSONResponse:
+    """
+    Run the expiry sweep now instead of waiting for the tick.
+
+    The same call the background loop makes. Exists so an operator can force it
+    after changing a window, and so the path is testable without a 30-second
+    wait or a second event loop.
+    """
+    return JSONResponse({"announced": await _sweep_handoffs()})
 
 
 @app.get("/admin/tasks")
