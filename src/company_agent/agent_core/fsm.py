@@ -19,6 +19,7 @@ import re
 import time
 import uuid
 
+from .brain.episodes import EpisodeStore
 from .brain.turn_log import TurnLogWriter
 from .identity import IdentityBroker, canonicalize
 from .models import ClassificationResult, HandoffArgs, TaskResult, TurnContext
@@ -93,6 +94,7 @@ class TurnFSM:
         turn_log: TurnLogWriter,
         team_group_jid: str,
         identity: IdentityBroker | None = None,
+        episodes: EpisodeStore | None = None,
     ) -> None:
         self._transport = transport
         self._outbox = outbox
@@ -102,6 +104,7 @@ class TurnFSM:
         self._turn_log = turn_log
         self._team_group_jid = team_group_jid
         self._identity = identity
+        self._episodes = episodes
 
     async def handle(self, event: InboundEvent) -> None:
         if event.from_me or event.is_status:
@@ -188,6 +191,7 @@ class TurnFSM:
             inbound_text=event.text,
             inbound_event_id=event.source_event_id,
             classification=cls,
+            identity_id=identity_id,
             sender_name=event.sender_name,
             is_group=False,
             deterministic_only=deterministic_only,
@@ -209,6 +213,27 @@ class TurnFSM:
         if result.reply_text:
             await self._reply(event, turn_id, result.reply_text)
 
+        # True when the answer could draw on this conversation's history: the
+        # column has read `false` on every row since it existed.
+        episodic_used = bool(
+            result.composed_by_llm and self._episodes is not None and identity_id is not None
+        )
+
+        if self._episodes is not None:
+            await self._episodes.record(
+                identity_id=identity_id,
+                contact_phone=phone,
+                turn_id=turn_id,
+                inbound_text=event.text,
+                reply_text=result.reply_text,
+                intent=cls.intent,
+                confidence=cls.confidence,
+                decision=cls.decision,
+                task=task.name,
+                composed_by_llm=result.composed_by_llm,
+                model_used=result.model_used,
+            )
+
         latency_ms = int((time.monotonic() - t0) * 1000)
         await self._turn_log.write(
             turn_id=turn_id,
@@ -220,6 +245,7 @@ class TurnFSM:
             latency_ms=latency_ms,
             identity_id=identity_id,
             deterministic_only=deterministic_only,
+            episodic_used=episodic_used,
         )
 
         logger.info(

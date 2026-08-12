@@ -47,12 +47,60 @@ def build_clarify_prompt(message: str, top_matches: list) -> str:
     )
 
 
-def build_fallback_prompt(message: str) -> str:
-    return (
-        f"Mensaje del paciente: \"{message}\"\n\n"
-        "Responde como Gutty con tu mejor criterio. Si no tienes la información exacta, "
-        "indica que conectarás con una asesora."
-    )
+MAX_CONTEXT_CHARS = 3000
+
+
+def build_fallback_prompt(
+    message: str,
+    context: list | None = None,
+    history: list | None = None,
+) -> str:
+    """
+    The composed-answer prompt.
+
+    This used to pass the patient's message and nothing else, so every off-FAQ
+    answer came from the model's own knowledge of NutriWhite — which is none.
+    Two things are added, and the order matters: the conversation so far, then
+    the retrieved documentation, then the question.
+
+    The instruction to answer ONLY from the provided context is what turns
+    "don't invent prices" from a request into something checkable — an answer
+    that cites nothing is a visible failure rather than a plausible paragraph.
+    """
+    sections: list[str] = []
+
+    if history:
+        turns = "\n".join(
+            f"{'Paciente' if e.direction == 'inbound' else 'Gutty'}: {e.text}" for e in history
+        )
+        sections.append(f"Conversación reciente:\n{turns}")
+
+    if context:
+        used = 0
+        excerpts: list[str] = []
+        for chunk in context:
+            text = chunk.content.strip()
+            if used + len(text) > MAX_CONTEXT_CHARS:
+                break
+            excerpts.append(f"[{chunk.source_uri}]\n{text}")
+            used += len(text)
+        if excerpts:
+            sections.append("Información de NutriWhite:\n\n" + "\n\n".join(excerpts))
+
+    sections.append(f'Mensaje del paciente: "{message}"')
+
+    if context:
+        sections.append(
+            "Responde ÚNICAMENTE con información presente arriba. Si la respuesta no está ahí, "
+            "dilo con naturalidad y ofrece conectar con una asesora — no la deduzcas."
+        )
+    else:
+        sections.append(
+            "Responde como Gutty con tu mejor criterio. Si no tienes la información exacta, "
+            "indica que conectarás con una asesora."
+        )
+
+    return "\n\n".join(sections)
 
 
 def build_greeting_prompt(message: str) -> str:

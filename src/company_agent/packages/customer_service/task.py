@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from company_agent.agent_core.brain.episodes import EpisodeStore
 from company_agent.agent_core.llm.anthropic import LLMClient
 from company_agent.agent_core.llm.composition import (
     CLARIFY_SYSTEM,
@@ -10,6 +11,7 @@ from company_agent.agent_core.llm.composition import (
     build_fallback_prompt,
 )
 from company_agent.agent_core.models import HandoffArgs, TaskResult, TurnContext
+from company_agent.agent_core.routing.retrieval_client import RetrievalClient
 
 from .policy import (
     CANNED_FAREWELL,
@@ -45,9 +47,30 @@ class CustomerServiceTask:
 
     name = "customer_service"
 
-    def __init__(self, llm: LLMClient, *, handled_intents: frozenset[str] = frozenset()) -> None:
+    def __init__(
+        self,
+        llm: LLMClient,
+        *,
+        handled_intents: frozenset[str] = frozenset(),
+        retrieval: RetrievalClient | None = None,
+        episodes: EpisodeStore | None = None,
+    ) -> None:
         self._llm = llm
         self.handled_intents = handled_intents
+        self._retrieval = retrieval
+        self._episodes = episodes
+
+    async def _ground(self, ctx: TurnContext) -> tuple[list, list]:
+        """
+        Documentation and conversation history for a composed answer.
+
+        Fetched here rather than on every turn: an FAQ hit, a greeting or a
+        handoff answers deterministically and must not pay for an embedding call
+        and a database read it will not use.
+        """
+        chunks = await self._retrieval.retrieve(ctx.inbound_text) if self._retrieval else []
+        history = await self._episodes.recent(ctx.identity_id) if self._episodes else []
+        return chunks, history
 
     async def handle(self, ctx: TurnContext) -> TaskResult:
         cls = ctx.classification
@@ -126,7 +149,8 @@ class CustomerServiceTask:
 
         # ── 7. Fallback / unknown / patient-specific ──────────────────────────
         try:
-            prompt = build_fallback_prompt(ctx.inbound_text)
+            context, history = await self._ground(ctx)
+            prompt = build_fallback_prompt(ctx.inbound_text, context=context, history=history)
             text, tok_in, tok_out = await self._llm.compose(
                 turn_id=ctx.turn_id,
                 tier="escalation",

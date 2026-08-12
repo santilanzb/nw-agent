@@ -16,6 +16,7 @@ from company_agent.common.db import make_async_pool
 from company_agent.packages.drift import PackageDrift, check_drift
 from company_agent.packages.registrar import install_packages
 
+from .brain.episodes import EpisodeStore
 from .brain.turn_log import TurnLogWriter
 from .config import AgentCoreSettings
 from .fsm import TurnFSM, turn_id_for
@@ -25,6 +26,7 @@ from .llm.anthropic import LLMClient
 from .outbox.sender import SendOutbox
 from .routing.classifier_client import ClassifierClient
 from .routing.handoff_client import HandoffClient
+from .routing.retrieval_client import RetrievalClient
 from .tasks.base import TaskRegistry
 from .tasks.fallback import FallbackTask
 from .transport.base import InboundEvent, Transport
@@ -76,6 +78,9 @@ outbox = SendOutbox(pool, transports)
 classifier = ClassifierClient(
     base_url=settings.rag_api_url, api_key=settings.internal_api_key
 )
+retrieval = RetrievalClient(
+    base_url=settings.rag_api_url, api_key=settings.internal_api_key
+)
 handoff_client = HandoffClient(
     base_url=settings.crm_adapter_url, api_key=settings.internal_api_key
 )
@@ -88,15 +93,19 @@ llm = LLMClient(
     langfuse_host=settings.langfuse_host,
 )
 
-# Tasks arrive as function packages: one directory each, discovered and
-# registered here. Adding a capability means adding a directory — this line
-# never changes again.
-registry = TaskRegistry()
-installed_packages = install_packages(registry, llm=llm)
-registry.set_fallback(FallbackTask())
-
 turn_log = TurnLogWriter(database_url=settings.database_url)
 identity = IdentityBroker(pool)
+episodes = EpisodeStore(pool)
+
+# Tasks arrive as function packages: one directory each, discovered and
+# registered here. Adding a capability means adding a directory — this line
+# never changes again. Packages receive the dependencies they declare in their
+# constructor; a package that wants none of these simply does not accept them.
+registry = TaskRegistry()
+installed_packages = install_packages(
+    registry, llm=llm, retrieval=retrieval, episodes=episodes
+)
+registry.set_fallback(FallbackTask())
 
 fsm = TurnFSM(
     transport=waha,
@@ -107,6 +116,7 @@ fsm = TurnFSM(
     turn_log=turn_log,
     team_group_jid=settings.handoff_team_group_jid,
     identity=identity,
+    episodes=episodes,
 )
 
 _inflight: set[asyncio.Task[None]] = set()
@@ -232,7 +242,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         with contextlib.suppress(asyncio.CancelledError):
             await sweeper
         await asyncio.gather(
-            waha.aclose(), classifier.aclose(), handoff_client.aclose(), return_exceptions=True
+            waha.aclose(),
+            classifier.aclose(),
+            retrieval.aclose(),
+            handoff_client.aclose(),
+            return_exceptions=True,
         )
         await pool.close()
 

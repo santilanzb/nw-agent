@@ -38,9 +38,12 @@ class TurnContext:
     turn_id: uuid.UUID
     phone: str
     contact_id: str | None
+    # The durable key for this patient. None when identity resolution failed —
+    # the turn still gets answered, it just has no history to draw on.
     inbound_text: str
     inbound_event_id: str
     classification: ClassificationResult
+    identity_id: uuid.UUID | None = None
     sender_name: str | None = None
     is_group: bool = False
     group_jid: str | None = None

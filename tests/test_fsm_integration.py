@@ -24,8 +24,16 @@ TEAM_GROUP = "120363000000000000@g.us"
 
 
 def _phone() -> str:
-    """A fresh number per test: handoff state is keyed on it and persists."""
-    return f"+5841{random.randint(10_000_000, 99_999_999)}"
+    """
+    A fresh number per test: handoff state is keyed on it and persists.
+
+    `414` is a real Venezuelan mobile prefix, and it has to be. The previous
+    generator produced `+5841X…` for any X, and only 412/414/416/417/418 are
+    valid — so a third of runs created a number libphonenumber rejects, which
+    the identity broker (correctly) files for human review. The test that
+    asserts a healthy identity was passing two times in three.
+    """
+    return f"+58414{random.randint(1_000_000, 9_999_999)}"
 
 
 def _body(event_id: str, phone: str, text: str) -> dict:

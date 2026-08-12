@@ -30,6 +30,7 @@ def _write_sync(
     latency_ms: int,
     identity_id: uuid.UUID | None = None,
     deterministic_only: bool = False,
+    episodic_used: bool = False,
 ) -> None:
     phone_hash = _hash_phone(phone)
     raw_params = cls.dispatch.params if cls and cls.dispatch and cls.dispatch.params else None
@@ -56,6 +57,7 @@ def _write_sync(
         # formats produced two unrelated histories.
         "identity_id": identity_id,
         "deterministic_only": deterministic_only,
+        "episodic_used": episodic_used,
     }
     with connect(database_url) as conn:
         conn.execute(
@@ -67,7 +69,7 @@ def _write_sync(
                 task, task_outcome, composed_by_llm, model_used,
                 composition_tokens_in, composition_tokens_out,
                 latency_ms, reply_text, handoff_fired,
-                identity_id, deterministic_only
+                identity_id, deterministic_only, episodic_used
             ) VALUES (
                 %(turn_id)s, %(phone_hash)s, %(inbound_text)s,
                 %(classified_intent)s, %(confidence)s, %(decision)s,
@@ -75,7 +77,7 @@ def _write_sync(
                 %(task)s, %(task_outcome)s, %(composed_by_llm)s, %(model_used)s,
                 %(composition_tokens_in)s, %(composition_tokens_out)s,
                 %(latency_ms)s, %(reply_text)s, %(handoff_fired)s,
-                %(identity_id)s, %(deterministic_only)s
+                %(identity_id)s, %(deterministic_only)s, %(episodic_used)s
             )
             ON CONFLICT (turn_id) DO NOTHING
             """,
@@ -98,6 +100,7 @@ class TurnLogWriter:
         latency_ms: int,
         identity_id: uuid.UUID | None = None,
         deterministic_only: bool = False,
+        episodic_used: bool = False,
     ) -> None:
         try:
             await asyncio.to_thread(
@@ -112,6 +115,7 @@ class TurnLogWriter:
                 latency_ms,
                 identity_id,
                 deterministic_only,
+                episodic_used,
             )
         except Exception as exc:  # noqa: BLE001 - observability must never fail a turn
             logger.error("turn_log write failed turn_id=%s: %s", turn_id, exc)
