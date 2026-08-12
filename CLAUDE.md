@@ -53,6 +53,19 @@ python scripts/openclaw_pending_messages.py   # scans the message journal for un
 python scripts/smoke_test_phase1.py        # Phase 1 Brain smoke test — 6 turns against agent-core webhook
 ```
 
+```bash
+# Handoff, from the operator's side. The 8-char reference in the team group is a
+# prefix of the ticket id; the endpoints take the full uuid.
+curl -s "http://localhost:8083/admin/handoff/$TICKET_ID/context?turns=20" | jq .
+curl -s -X POST http://localhost:8083/admin/handoff/sweep          # expire + announce now
+curl -s -X POST http://localhost:8082/v1/handoff/sweep -H "X-Internal-API-Key: $INTERNAL_API_KEY" | jq .
+
+# NOTE: the integration tests talk to the crm-adapter CONTAINER over HTTP, so a
+# change under src/company_agent/crm_adapter/ means nothing until the image is
+# rebuilt:
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build crm-adapter
+```
+
 ## Architecture: the three-service split
 
 OpenClaw is the agent runtime, **not** a business backend. The agent reaches business systems only through narrow HTTP tools defined in [openclaw/plugins/customer-service-tools/index.js](openclaw/plugins/customer-service-tools/index.js). Those tools call two FastAPI services:
@@ -171,12 +184,18 @@ Revisions: `0001` baseline (freezes `000`–`004`) · `0002` Stage 0 substrate (
 `send_intents`, `identity_registry`, `approval_requests`, `crm_write_log`, `consent_events`; adds
 `conversation_class` to `turn_log`, temporal validity to `patient_facts`, and a `visibility` flag
 on the knowledge tables) · `0003` FK + index on `turn_log.identity_id` (the column existed with no
-writer) · `0004` `identity_id` on the three episodic tables · `0005` `media_artifacts`.
+writer) · `0004` `identity_id` on the three episodic tables · `0005` `media_artifacts` ·
+`0006` `identity_id` on `intake_events`, `send_intents` and `handoff_state`.
 
-**Two FK policies, and the difference is deliberate.** `turn_log.identity_id` is `ON DELETE SET
-NULL`: it is the audit trail an erasure is measured against and must outlive the identity.
-`patient_episodes`, `episode_summaries`, `patient_facts` and `media_artifacts` are `ON DELETE
-CASCADE`: they are the thing Art. 17 erases.
+**Two FK policies, and the difference is deliberate.** `turn_log.identity_id`, and since `0006`
+`intake_events`, `send_intents` and `handoff_state`, are `ON DELETE SET NULL`: they are the ledgers
+an erasure is measured against, and each carries an idempotency key that has to outlive the person
+— drop the intake row and a redelivered webhook is processed as new; drop the send row and a
+re-driven turn messages someone who asked to be forgotten. `patient_episodes`, `episode_summaries`,
+`patient_facts` and `media_artifacts` are `ON DELETE CASCADE`: they are the thing Art. 17 erases.
+Making the ledgers *reachable* is `0006`'s job; whether erasure then deletes or redacts `payload`,
+`body_text` and `inbound_text` is Phase 6's. `tests/test_erasure_reach.py` is the standing proof
+that both halves hold.
 
 Two schema details that bite: the chunk's `search_tsv` is `GENERATED ALWAYS AS` — do not insert
 into it, and changing its tsconfig rebuilds the column. `patient_facts` is now append-only: a
@@ -217,24 +236,28 @@ src/company_agent/agent_core/
   outbox/
     sender.py       # SendOutbox: row before transport call, per-class in-doubt policy
   identity/
-    phone.py              # ONE canonicalizer: canonical E.164 + the addressable wa_id
-    broker.py             # resolve() → identity_registry row; ambiguity → merge_state='review'
+    broker.py             # resolve() creates-if-missing; find_by_id/find_by_phone never do
   media/
     store.py              # MediaStore: fetch → volume → media_artifacts row → reference
   routing/
     classifier_client.py  # POST /v1/classify_intent → ClassificationResult
     retrieval_client.py   # POST /v1/retrieve — degrades to [], never raises
-    handoff_client.py     # check_active (raises — see below), create_handoff, resume, claim
+    handoff_client.py     # check_active (raises — see below), create_handoff, resume, claim,
+                          #   sweep (raises), get_handoff, history
   tasks/
     base.py               # TaskModule Protocol + explicit-claim TaskRegistry
     fallback.py           # unclaimed intents → loud log + human escalation
   brain/
     turn_log.py           # TurnLogWriter (phone SHA-256 hashed, plus identity_id)
     episodes.py           # EpisodeStore: last-N turns for a composed answer
+    context_package.py    # ContextPackageBuilder: what a ticket reference opens
   llm/
     anthropic.py          # LLMClient with Langfuse tracing (trace_id = turn_id)
     composition.py        # Spanish system prompts + prompt builders
 ```
+
+The canonicalizer moved to `src/company_agent/common/phone.py` — crm-adapter keys `handoff_state`
+on it too, and a copy per service is how the two drifted apart. `agent_core.identity` re-exports it.
 
 Task modules themselves live in `src/company_agent/packages/`, not here — see *Function packages*
 above. `tasks/base.py` and `tasks/fallback.py` stay: the registry is agent-core's, and the fallback
@@ -261,6 +284,37 @@ handler is its terminal case, not a capability.
   context is **not sent** — the turn is handed to a human with reason `unverified_price`. A missing
   price table escalates every priced reply rather than waving amounts through.
 - **Media: bytes to the volume, reference to the asesora.** Never the content, per graft 10.
+
+### Handoff and ticket — the Phase 3 rules
+
+- **One key per patient, canonicalized at the crm-adapter boundary.** agent-core opens a handoff
+  with the raw `wa_id` (the reply address round-trips from it); the group command `@Gutty tomo`
+  resolves canonical E.164. Those are different strings for a Mexican id carrying the legacy `1`,
+  an Argentine id missing the `9` and an eight-digit Brazilian id — so the claim matched nothing
+  and the resume left Gutty mute for the whole TTL. All four handoff endpoints canonicalize their
+  own input (`E164Phone` in `crm_adapter/models.py`), which fixes agent-core, the OpenClaw plugin
+  and curl at once. **Venezuela is the one country where both forms coincide**, so a Venezuelan
+  test number proves nothing here.
+- **A handoff with no phone is a 422**, raised by the model so the rejection lands *before* the
+  Zoho Note is written. It used to return 200 and skip the state row: an audit Note in the CRM and
+  no mute.
+- **Two expiry windows.** `HANDOFF_PENDING_EXPIRE_HOURS` (4) from creation,
+  `HANDOFF_CLAIMED_EXPIRE_HOURS` (24) restarting at the claim. `check_active` no longer flips the
+  row — it stops counting it as active past `expires_at`, because whoever flips it owns telling the
+  team, and expiring on the read path silently consumed the row the sweep exists to announce.
+- **`POST /v1/handoff/sweep` transitions, agent-core announces.** One team-group message per closed
+  case, keyed `handoff:{id}:expired` so a re-driven tick cannot say it twice. Nothing goes to the
+  patient.
+- **The reference the group is given is the ticket id**, not the turn id, because that is what
+  `GET /admin/handoff/{id}/context` takes. By-reference only works if the reference resolves.
+- **The context package is where the patient's words live** — behind the internal API key, in the
+  store that has retention and erasure, which a WhatsApp group does not. Sections degrade
+  independently into `errors`; only the ticket read is allowed to fail the request, so
+  "crm-adapter is down" is not answered with the same 404 as "no such ticket".
+
+The operator's side of all this — what each team-group message means, how to read a context
+package, and what to check when a case will not claim or will not expire — is
+[docs/handoff-runbook.md](docs/handoff-runbook.md).
 
 ### The durability rules — these are load-bearing, don't undo them
 
